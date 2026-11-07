@@ -298,6 +298,21 @@ export async function downloadInvoicePdf(element, filename, options = {}) {
     }
   }
 
+  // Store the PDF on the backend so scanning the embedded QR code serves this exact PDF
+  if (options?.token) {
+    try {
+      const pdfBase64 = pdf.output('datauristring')
+      await api.post('/documents/save', {
+        token: options.token,
+        pdfBase64,
+        filename
+      })
+    } catch (saveErr) {
+      console.error('Failed to store PDF for public QR access:', saveErr)
+      throw new Error('Failed to store PDF for QR access. Please try again.')
+    }
+  }
+
   pdf.save(filename)
   return true
 }
@@ -433,6 +448,8 @@ export function PrintPreviewModal({ type, id, onClose }) {
   const [error, setError] = useState(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [pdfError, setPdfError] = useState(null)
+  const [docToken, setDocToken] = useState('')
+  const [docPublicUrl, setDocPublicUrl] = useState('')
 
   // Visible sections toggles (HSN, Qty, TaxTable all off by default)
   const [settings, setSettings] = useState({
@@ -505,6 +522,19 @@ export function PrintPreviewModal({ type, id, onClose }) {
 
         const data = await api.get(endpoint)
         setDoc(data)
+
+        // Fetch or register public QR access token for customer scanning
+        try {
+          const tokenRes = await api.post('/documents/token', { type, id })
+          if (tokenRes?.token) {
+            setDocToken(tokenRes.token)
+            if (tokenRes.publicUrl) {
+              setDocPublicUrl(tokenRes.publicUrl)
+            }
+          }
+        } catch {
+          // Token will be generated on demand if needed
+        }
 
         // Fetch saved invoice template settings from backend
         let tmpl = {}
@@ -701,11 +731,26 @@ export function PrintPreviewModal({ type, id, onClose }) {
         throw new Error('Document preview element not found')
       }
 
+      // Ensure public token is obtained if not already loaded
+      let activeToken = docToken
+      if (!activeToken) {
+        try {
+          const tokenRes = await api.post('/documents/token', { type, id })
+          if (tokenRes?.token) {
+            activeToken = tokenRes.token
+            setDocToken(activeToken)
+            if (tokenRes.publicUrl) setDocPublicUrl(tokenRes.publicUrl)
+          }
+        } catch (e) {
+          console.warn('Failed to register QR token:', e)
+        }
+      }
+
       const filename = generatePdfFilename({ type, fields, doc })
-      await downloadInvoicePdf(targetElement, filename, { settings })
+      await downloadInvoicePdf(targetElement, filename, { settings, token: activeToken })
     } catch (err) {
       console.error('Failed to generate and download PDF directly:', err)
-      setPdfError('Failed to generate PDF. Please try again.')
+      setPdfError(err.message || 'Failed to generate PDF. Please try again.')
     } finally {
       setDownloadingPdf(false)
     }
@@ -766,10 +811,10 @@ export function PrintPreviewModal({ type, id, onClose }) {
     }
   }
 
-  // QR Code encodes the real soft-copy invoice URL — scanning opens the actual invoice in the browser
+  // QR Code encodes the real accessible PDF URL — scanning opens the actual invoice on any device
   const documentDateStr = formatSlashDate(fields.docDate)
-  const softCopyUrl = `${window.location.origin}/print?type=${type}&id=${id}`
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(softCopyUrl)}`
+  const softCopyUrl = docPublicUrl || `${window.location.origin}/api/documents/public/${docToken || `${type}_${id}`}`
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(softCopyUrl)}`
 
   const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6 print-modal-overlay">

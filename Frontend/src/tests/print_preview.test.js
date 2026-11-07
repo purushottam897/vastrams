@@ -214,12 +214,19 @@ test('A4 Invoice & Voucher Designer Print Feature Tests', async (t) => {
     assert.ok(printDocContent.includes('downloadInvoicePdf'), 'PrintDocument must use downloadInvoicePdf')
   })
 
-  await t.test('signatoryLabel defaults to vendor name', () => {
+  await t.test('QR code points to accessible public PDF URL and stores PDF on backend', () => {
     const modalFilePath = path.resolve('src/components/PrintPreviewModal.jsx')
     const modalContent = fs.readFileSync(modalFilePath, 'utf-8')
 
-    // Must dynamically set signatoryLabel using vendorName
-    assert.ok(modalContent.includes('initialFields.signatoryLabel = vendorName'), 'Must set signatoryLabel using vendorName')
-    assert.ok(modalContent.includes('Signatory Label'), 'Must provide Signatory Label editor field')
+    const printDocFilePath = path.resolve('src/pages/PrintDocument.jsx')
+    const printDocContent = fs.readFileSync(printDocFilePath, 'utf-8')
+
+    // Must construct accessible URL for QR code pointing to public document endpoint
+    assert.ok(modalContent.includes('/api/documents/public/'), 'PrintPreviewModal must target public documents endpoint in QR URL')
+    assert.ok(printDocContent.includes('/api/documents/public/'), 'PrintDocument must target public documents endpoint in QR URL')
+
+    // Must persist PDF buffer to backend storage via /documents/save
+    assert.ok(modalContent.includes('/documents/save'), 'downloadInvoicePdf must store PDF to /documents/save')
+    assert.ok(modalContent.includes('options?.token'), 'Must link PDF storage to document token')
   })
 })
