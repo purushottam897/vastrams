@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Printer } from 'lucide-react'
 import api from '../utils/api'
 import CustomDatePicker from './ui/CustomDatePicker'
@@ -389,6 +390,11 @@ export function PrintPreviewModal({ type, id, onClose }) {
   }, [type, id])
 
   const handlePrint = () => {
+    // Unfocus active element to commit any in-progress contentEditable changes
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur()
+    }
+
     // Construct clear dynamic document title for printing / Save as PDF
     const titleParts = []
     if (fields.title) titleParts.push(fields.title.trim())
@@ -406,11 +412,13 @@ export function PrintPreviewModal({ type, id, onClose }) {
 
     document.title = dynamicTitle
 
-    window.print()
-
+    // Give a brief tick for blur event handlers to flush state before opening browser print dialog
     setTimeout(() => {
-      document.title = originalTitle
-    }, 1000)
+      window.print()
+      setTimeout(() => {
+        document.title = originalTitle
+      }, 1000)
+    }, 50)
   }
 
   if (!type || !id) return null
@@ -473,12 +481,12 @@ export function PrintPreviewModal({ type, id, onClose }) {
   const softCopyUrl = `${window.location.origin}/print?type=${type}&id=${id}`
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(softCopyUrl)}`
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6 print-modal-overlay">
       <style dangerouslySetInnerHTML={{__html: `
         @page {
           size: A4 portrait;
-          margin: 5mm;
+          margin: 6mm 8mm;
         }
         @media print {
           /* 1. Hide non-print chrome */
@@ -489,8 +497,15 @@ export function PrintPreviewModal({ type, id, onClose }) {
           .no-print {
             display: none !important;
           }
-          /* 2. Ensure parent layout wrappers stay visible as block containers */
-          html, body, #root, #root > div, .flex-1, main, motion.div {
+
+          /* 2. When rendered via portal in body, completely hide #root so background page does not print */
+          body:has(.print-modal-overlay) > #root,
+          body > #root:has(~ .print-modal-overlay) {
+            display: none !important;
+          }
+
+          /* 3. If rendered inside #root without portal, ensure parent wrappers stay unconstrained */
+          html, body, #root, #root > div, .flex-1, main, [class*="space-y"] {
             display: block !important;
             position: static !important;
             width: 100% !important;
@@ -503,24 +518,27 @@ export function PrintPreviewModal({ type, id, onClose }) {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          /* 3. Hide page content siblings inside main container when modal is open */
-          main > div > *:not(.print-modal-overlay) {
+
+          /* 4. Hide background siblings if modal is nested inside main */
+          main > div > *:not(:has(.print-modal-overlay)):not(.print-modal-overlay) {
             display: none !important;
           }
-          /* 4. Overlay & Card Layout */
+
+          /* 5. Overlay & Card Layout - flatten out modal wrappers for printing */
           .print-modal-overlay {
-            position: absolute !important;
+            position: static !important;
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
             height: auto !important;
+            min-height: 0 !important;
             background: #ffffff !important;
             backdrop-filter: none !important;
             padding: 0 !important;
             margin: 0 !important;
             display: block !important;
             overflow: visible !important;
-            z-index: 9999 !important;
+            z-index: auto !important;
           }
           .print-modal-dialog {
             border: none !important;
@@ -528,10 +546,13 @@ export function PrintPreviewModal({ type, id, onClose }) {
             width: 100% !important;
             max-width: 100% !important;
             height: auto !important;
+            min-height: 0 !important;
             background: #ffffff !important;
             display: block !important;
             overflow: visible !important;
             border-radius: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
           }
           .print-preview-column {
             background: #ffffff !important;
@@ -542,7 +563,8 @@ export function PrintPreviewModal({ type, id, onClose }) {
             height: auto !important;
             overflow: visible !important;
           }
-          /* Scaled A4 preview container - strictly fit 1 single page */
+
+          /* 6. Scaled A4 preview container - strictly fit 1 single page */
           .printable-preview-content {
             zoom: 1 !important;
             transform: none !important;
@@ -551,19 +573,32 @@ export function PrintPreviewModal({ type, id, onClose }) {
             height: auto !important;
             border: none !important;
             box-shadow: none !important;
-            margin: 0 !important;
-            padding: 4mm 6mm !important;
+            margin: 0 auto !important;
+            padding: 2mm 4mm !important;
             display: block !important;
             overflow: visible !important;
             box-sizing: border-box !important;
+            background: #ffffff !important;
+            color: #000000 !important;
             page-break-after: avoid !important;
             page-break-before: avoid !important;
             break-after: avoid !important;
             break-before: avoid !important;
           }
-          div, table, tr, td, th, tbody {
+
+          /* 7. Ensure table rows do not break awkwardly */
+          .print-table {
+            page-break-inside: auto;
+          }
+          .print-table tr {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
+          }
+          .print-table thead {
+            display: table-header-group;
+          }
+          .print-table tfoot {
+            display: table-footer-group;
           }
         }
       `}} />
@@ -1337,6 +1372,11 @@ export function PrintPreviewModal({ type, id, onClose }) {
       </div>
     </div>
   )
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalContent, document.body)
+  }
+  return modalContent
 }
 
 export default PrintPreviewModal
