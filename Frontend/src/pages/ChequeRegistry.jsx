@@ -432,7 +432,7 @@ export function ChequeRegistry() {
         <KpiCard
           title="Total Instruments"
           value={loading ? <Skeleton className="h-8 w-16" /> : String(cheques.length)}
-          subtitle={`${clearedCount} cleared · ${bouncedCount} bounced`}
+          subtitle={`${cheques.length} total recorded`}
           icon={CheckCircle2}
           iconColor="text-slate-600 dark:text-slate-300"
           iconBg="bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
@@ -455,9 +455,7 @@ export function ChequeRegistry() {
               { value: 'UPCOMING', label: 'Upcoming Cheques' },
               { value: 'DUE_SOON', label: 'Approaching (≤ 7 Days)' },
               { value: 'FUTURE', label: 'Future Dated (> 7 Days)' },
-              { value: 'ALL', label: 'All Cheques' },
-              { value: 'cleared', label: 'Cleared' },
-              { value: 'bounced', label: 'Bounced' }
+              { value: 'ALL', label: 'All Cheques' }
             ]}
           />
         </div>
@@ -526,14 +524,6 @@ export function ChequeRegistry() {
                       </span>
                       <span className="text-xs text-slate-500 font-medium">{c.date}</span>
                     </div>
-                    {(() => {
-                      const sched = getChequeSchedule(c)
-                      return (
-                        <Badge variant={sched.variant} dot>
-                          {sched.label}
-                        </Badge>
-                      )
-                    })()}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs py-2 px-3 rounded-lg bg-slate-50/80 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
@@ -602,7 +592,6 @@ export function ChequeRegistry() {
                     <th className="px-6 py-3.5">Bank Name</th>
                     <th className="px-6 py-3.5">Party Type</th>
                     <th className="px-6 py-3.5">Party</th>
-                    <th className="px-6 py-3.5">Status</th>
                     <th className="px-6 py-3.5">Remarks</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
                   </tr>
@@ -626,16 +615,6 @@ export function ChequeRegistry() {
                         <PartyTypeBadge type={c.partyType} />
                       </td>
                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[200px]">{toTitleCase(c.party)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {(() => {
-                          const sched = getChequeSchedule(c)
-                          return (
-                            <Badge variant={sched.variant} dot>
-                              {sched.label}
-                            </Badge>
-                          )
-                        })()}
-                      </td>
                       <td className="px-6 py-4 text-slate-400 italic truncate max-w-[180px]">{c.remarks || '—'}</td>
                       <td className="px-6 py-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
@@ -718,14 +697,6 @@ export function ChequeRegistry() {
                         <span className="text-slate-400 block text-[10px] uppercase font-bold">{selectedCheque?.partyType}</span>
                         <p className="font-bold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{toTitleCase(selectedCheque?.party)}</p>
                       </div>
-                      {(() => {
-                        const sched = getChequeSchedule(selectedCheque)
-                        return (
-                          <Badge variant={sched.variant} dot>
-                            {sched.label}
-                          </Badge>
-                        )
-                      })()}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700/80">
@@ -827,51 +798,20 @@ export function ChequeRegistry() {
                           onChange={d => setForm({...form, date: d})}
                         />
                       </div>
-                      {modalMode === 'add' ? (
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            Cheque Status
-                          </label>
-                          <div className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                            <span className="font-medium">Upcoming (Pending Clearing)</span>
-                          </div>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            New cheques automatically register as upcoming instruments.
-                          </p>
-                        </div>
-                      ) : (
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            Cheque Status <span className="text-rose-500">*</span>
-                          </label>
-                          <DropdownSelect
-                            value={form.status}
-                            onChange={val => setForm({...form, status: val})}
-                            options={[
-                              { value: 'Pending', label: 'Pending (Upcoming)' },
-                              { value: 'cleared', label: 'Cleared' },
-                              { value: 'bounced', label: 'Bounced' },
-                              { value: 'deposited', label: 'Deposited / Cancelled' }
-                            ]}
-                          />
-                        </div>
-                      )}
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Drawee Bank Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. State Bank of India"
+                          value={form.bank}
+                          onChange={e => setForm({...form, bank: e.target.value})}
+                          className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Drawee Bank Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. State Bank of India"
-                        value={form.bank}
-                        onChange={e => setForm({...form, bank: e.target.value})}
-                        className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Remarks / Bounce Reason</label>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Remarks</label>
                       <textarea
                         rows={2}
                         value={form.remarks}
