@@ -213,4 +213,13 @@ test('A4 Invoice & Voucher Designer Print Feature Tests', async (t) => {
     // PrintDocument must import and call downloadInvoicePdf
     assert.ok(printDocContent.includes('downloadInvoicePdf'), 'PrintDocument must use downloadInvoicePdf')
   })
+
+  await t.test('signatoryLabel defaults to vendor name', () => {
+    const modalFilePath = path.resolve('src/components/PrintPreviewModal.jsx')
+    const modalContent = fs.readFileSync(modalFilePath, 'utf-8')
+
+    // Must dynamically set signatoryLabel using vendorName
+    assert.ok(modalContent.includes('initialFields.signatoryLabel = vendorName'), 'Must set signatoryLabel using vendorName')
+    assert.ok(modalContent.includes('Signatory Label'), 'Must provide Signatory Label editor field')
+  })
 })

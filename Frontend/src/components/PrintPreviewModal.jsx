@@ -466,7 +466,7 @@ export function PrintPreviewModal({ type, id, onClose }) {
     hsnValue: '9983',
     qtyValue: '1 No',
     declaration: 'We declare that this invoice shows the actual price of the goods / services described and that all particulars are true and correct.',
-    signatoryLabel: 'For Vastrams',
+    signatoryLabel: "",
     signatoryRole: 'Authorised Signatory',
     bankFirmName: '',
     bankName: '',
@@ -567,8 +567,9 @@ export function PrintPreviewModal({ type, id, onClose }) {
         }
 
         if (type === 'bill') {
+          const vendorName = data.vendorId?.name || ''
           initialFields.title = 'Tax Invoice'
-          initialFields.supplierName = data.vendorId?.name || ''
+          initialFields.supplierName = vendorName
           initialFields.supplierAddress = data.vendorId?.address || ''
           initialFields.supplierGstin = data.vendorId?.gstin || ''
           initialFields.supplierState = (data.vendorId?.gstin || '').substring(0, 2)
@@ -583,13 +584,15 @@ export function PrintPreviewModal({ type, id, onClose }) {
           initialFields.description = 'Purchase Bill Settlement'
           initialFields.totalAmount = data.amount || 0
           initialFields.taxRate = Number(data.taxRate || data.gstRate || 0)
+          initialFields.signatoryLabel = vendorName ? (vendorName.trim().toLowerCase().startsWith('for ') ? vendorName.trim() : `For ${vendorName.trim()}`) : `For ${prof.businessName || 'Vastrams'}`
         } else if (type === 'payment') {
+          const vendorName = data.vendorId?.name || ''
           initialFields.title = 'Payment Voucher'
           initialFields.supplierName = prof.businessName || ''
           initialFields.supplierAddress = prof.address || ''
           initialFields.supplierGstin = prof.gstin || ''
           initialFields.supplierState = (prof.gstin || '').substring(0, 2)
-          initialFields.recipientName = data.vendorId?.name || ''
+          initialFields.recipientName = vendorName
           initialFields.recipientAddress = data.vendorId?.address || ''
           initialFields.recipientGstin = data.vendorId?.gstin || ''
           initialFields.recipientState = (data.vendorId?.gstin || '').substring(0, 2)
@@ -599,6 +602,7 @@ export function PrintPreviewModal({ type, id, onClose }) {
           initialFields.refNum = data.referenceNumber || ''
           initialFields.description = `Payment via ${formatPaymentMode(data.paymentMode || 'Bank Transfer')} - Ref: ${data.referenceNumber}`
           initialFields.totalAmount = data.amount || 0
+          initialFields.signatoryLabel = vendorName ? (vendorName.trim().toLowerCase().startsWith('for ') ? vendorName.trim() : `For ${vendorName.trim()}`) : `For ${prof.businessName || 'Vastrams'}`
         } else if (type === 'loan') {
           const l = data.loan || data
           initialFields.title = 'Loan Drawdown Advice'
@@ -647,6 +651,8 @@ export function PrintPreviewModal({ type, id, onClose }) {
           initialFields.interestRate = (l.interestRate !== null && l.interestRate !== undefined && !isNaN(l.interestRate)) ? l.interestRate : null
           initialFields.accruedInterest = Math.round(accruedInterest * 100) / 100
           initialFields.daysElapsed = daysElapsed
+          const financierName = l.financierId?.name || ''
+          initialFields.signatoryLabel = financierName ? (financierName.trim().toLowerCase().startsWith('for ') ? financierName.trim() : `For ${financierName.trim()}`) : `For ${prof.businessName || 'Vastrams'}`
         } else if (type === 'repayment') {
           initialFields.title = 'Loan Repayment Receipt'
           initialFields.supplierName = data.loanId?.financierId?.name || ''
@@ -665,6 +671,8 @@ export function PrintPreviewModal({ type, id, onClose }) {
           initialFields.totalAmount = data.amount || 0
           initialFields.principalPaid = data.principalPaid || 0
           initialFields.interestPaid = data.interestPaid || 0
+          const repFinancier = data.loanId?.financierId?.name || data.financierId?.name || ''
+          initialFields.signatoryLabel = repFinancier ? (repFinancier.trim().toLowerCase().startsWith('for ') ? repFinancier.trim() : `For ${repFinancier.trim()}`) : `For ${prof.businessName || 'Vastrams'}`
         }
 
         setFields(initialFields)
@@ -944,6 +952,17 @@ export function PrintPreviewModal({ type, id, onClose }) {
                     value={fields.description}
                     onChange={e => setFields({...fields, description: e.target.value})}
                     className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-normal box-border focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">Signatory Label</label>
+                  <input
+                    type="text"
+                    value={fields.signatoryLabel}
+                    onChange={e => setFields({...fields, signatoryLabel: e.target.value})}
+                    placeholder="e.g. For TSR textiles"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium box-border focus:outline-none focus:ring-1 focus:ring-brand-primary"
                   />
                 </div>
 

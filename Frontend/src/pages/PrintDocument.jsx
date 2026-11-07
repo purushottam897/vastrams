@@ -693,7 +693,7 @@ export function PrintDocument() {
               </p>
             </div>
             <div className="p-3 flex flex-col justify-between items-end h-28 text-right">
-              <span className="font-bold text-[10px]">For {profile?.businessName || 'Vastrams'}</span>
+              <span className="font-bold text-[10px]">{partyName ? (partyName.trim().toLowerCase().startsWith('for ') ? partyName.trim() : `For ${partyName.trim()}`) : `For ${profile?.businessName || 'Vastrams'}`}</span>
               <div className="border-t border-slate-300 w-44 pt-1 font-semibold text-center text-[10px] uppercase text-slate-500 tracking-wider">
                 Authorised Signatory
               </div>
