@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Printer } from 'lucide-react'
+import { ArrowLeft, Printer, Download } from 'lucide-react'
 import api from '../utils/api'
-import { generateAckNumber, formatSlashDate, formatPaymentMode } from '../components/PrintPreviewModal'
+import { generateAckNumber, formatSlashDate, formatPaymentMode, downloadInvoicePdf, generatePdfFilename } from '../components/PrintPreviewModal'
 
 // English word spelling utility for currencies with Rupees & Paise support
 function numberToWords(num) {
@@ -95,8 +95,32 @@ export function PrintDocument() {
     fetchData()
   }, [type, id])
 
-  const handlePrint = () => {
-    window.print()
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [pdfError, setPdfError] = useState(null)
+
+  const handlePrint = async () => {
+    try {
+      setDownloadingPdf(true)
+      setPdfError(null)
+
+      const targetElement = document.querySelector('.print-container') || document.querySelector('.printable-preview-content')
+      if (!targetElement) {
+        throw new Error('Document preview element not found')
+      }
+
+      const vendorName = partyName || doc?.vendorId?.name || ''
+      const filename = generatePdfFilename({
+        type,
+        fields: { title, recipientName: vendorName, supplierName: vendorName, docDate: docDateStr },
+        doc
+      })
+      await downloadInvoicePdf(targetElement, filename)
+    } catch (err) {
+      console.error('Failed to generate and download PDF:', err)
+      setPdfError('Failed to generate PDF. Please try again.')
+    } finally {
+      setDownloadingPdf(false)
+    }
   }
 
   if (loading) {
@@ -353,13 +377,26 @@ export function PrintDocument() {
           <ArrowLeft size={16} />
           <span>Back</span>
         </button>
-        <button
-          onClick={handlePrint}
-          className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm px-4 py-2 rounded-lg shadow-sm transition"
-        >
-          <Printer size={16} />
-          <span>Print Document</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {pdfError && <span className="text-xs font-semibold text-rose-600">{pdfError}</span>}
+          <button
+            onClick={handlePrint}
+            disabled={downloadingPdf || loading}
+            className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-medium text-sm px-4 py-2 rounded-lg shadow-sm transition"
+          >
+            {downloadingPdf ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1" />
+                <span>Downloading PDF...</span>
+              </>
+            ) : (
+              <>
+                <Download size={16} />
+                <span>Print Document</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Main Document Frame */}
@@ -376,7 +413,7 @@ export function PrintDocument() {
           </div>
           <div className="text-right flex flex-col items-end">
             <span className="text-[10px] font-bold tracking-widest uppercase mb-1">e-Invoice</span>
-            <img src={qrImageUrl} alt="QR Code" className="w-20 h-20 border border-black p-0.5" />
+            <img src={qrImageUrl} alt="QR Code" crossOrigin="anonymous" className="w-20 h-20 border border-black p-0.5" />
           </div>
         </div>
 

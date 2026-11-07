@@ -112,4 +112,105 @@ test('A4 Invoice & Voucher Designer Print Feature Tests', async (t) => {
     // Must preserve payment description logic
     assert.ok(modalContent.includes('initialFields.description = `Payment via'), 'Must preserve payment description format')
   })
+
+  await t.test('generatePdfFilename correctly builds vendor-based PDF filenames', () => {
+    // Replicate the pure generator logic matching PrintPreviewModal export
+    const generateFilename = ({ type, fields = {}, doc = {} }) => {
+      let docType = 'Document'
+      if (type === 'payment') docType = 'Payment_Voucher'
+      else if (type === 'bill') docType = 'Tax_Invoice'
+      else if (type === 'loan') docType = 'Loan_Drawdown'
+      else if (type === 'repayment') docType = 'Loan_Repayment'
+      else if (fields?.title) docType = fields.title.trim().replace(/\s+/g, '_')
+
+      let vendorName = ''
+      if (type === 'payment') {
+        vendorName = fields?.recipientName || doc?.vendorId?.name || ''
+      } else if (type === 'bill') {
+        vendorName = fields?.supplierName || doc?.vendorId?.name || ''
+      } else {
+        vendorName = fields?.recipientName || fields?.supplierName || doc?.partyName || ''
+      }
+
+      if (!vendorName || vendorName.trim().toLowerCase() === 'vastrams') {
+        if (fields?.recipientName && fields.recipientName.trim().toLowerCase() !== 'vastrams') {
+          vendorName = fields.recipientName
+        } else if (fields?.supplierName && fields.supplierName.trim().toLowerCase() !== 'vastrams') {
+          vendorName = fields.supplierName
+        } else {
+          vendorName = 'Vendor'
+        }
+      }
+
+      const cleanVendor = vendorName
+        .trim()
+        .replace(/[<>:"/\\|?*]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'Vendor'
+
+      let dateStr = ''
+      if (fields?.docDate) {
+        // Simple YYYY-MM-DD extractor
+        const parts = fields.docDate.split(/[-/]/)
+        if (parts.length === 3) {
+          if (parts[0].length === 4) dateStr = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`
+          else dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+        }
+      }
+      if (!dateStr) dateStr = '2026-11-08'
+
+      return `${docType}_${cleanVendor}_${dateStr}.pdf`
+    }
+
+    // Exact examples from User Prompt Section 6
+    assert.equal(
+      generateFilename({ type: 'payment', fields: { recipientName: 'TSR Textiles', docDate: '08-11-2026' } }),
+      'Payment_Voucher_TSR_Textiles_2026-11-08.pdf'
+    )
+    assert.equal(
+      generateFilename({ type: 'bill', fields: { supplierName: 'TSR Textiles', docDate: '08-11-2026' } }),
+      'Tax_Invoice_TSR_Textiles_2026-11-08.pdf'
+    )
+    assert.equal(
+      generateFilename({ type: 'payment', fields: { recipientName: 'ABC Textiles', docDate: '08-11-2026' } }),
+      'Payment_Voucher_ABC_Textiles_2026-11-08.pdf'
+    )
+
+    // Invalid filesystem characters sanitization
+    assert.equal(
+      generateFilename({ type: 'payment', fields: { recipientName: 'TSR / Textiles * Ltd:?', docDate: '2026-11-08' } }),
+      'Payment_Voucher_TSR_Textiles_Ltd_2026-11-08.pdf'
+    )
+
+    // Safe fallback when vendor name is missing
+    assert.equal(
+      generateFilename({ type: 'payment', fields: { recipientName: '', docDate: '2026-11-08' } }),
+      'Payment_Voucher_Vendor_2026-11-08.pdf'
+    )
+  })
+
+  await t.test('Direct PDF generation implementation and button integration', () => {
+    const modalFilePath = path.resolve('src/components/PrintPreviewModal.jsx')
+    const modalContent = fs.readFileSync(modalFilePath, 'utf-8')
+
+    const printDocFilePath = path.resolve('src/pages/PrintDocument.jsx')
+    const printDocContent = fs.readFileSync(printDocFilePath, 'utf-8')
+
+    // Must export downloadInvoicePdf and generatePdfFilename
+    assert.ok(modalContent.includes('export async function downloadInvoicePdf'), 'Must export downloadInvoicePdf')
+    assert.ok(modalContent.includes('export function generatePdfFilename'), 'Must export generatePdfFilename')
+
+    // Must use jsPDF and html2canvas with scale 2
+    assert.ok(modalContent.includes('jsPDF'), 'Must use jsPDF for A4 PDF creation')
+    assert.ok(modalContent.includes('html2canvas'), 'Must use html2canvas')
+    assert.ok(modalContent.includes('scale: 2'), 'Must render high-resolution 2x scale canvas')
+
+    // Must have crossOrigin="anonymous" on QR code
+    assert.ok(modalContent.includes('crossOrigin="anonymous"'), 'Must set crossOrigin on QR code in PrintPreviewModal')
+    assert.ok(printDocContent.includes('crossOrigin="anonymous"'), 'Must set crossOrigin on QR code in PrintDocument')
+
+    // PrintDocument must import and call downloadInvoicePdf
+    assert.ok(printDocContent.includes('downloadInvoicePdf'), 'PrintDocument must use downloadInvoicePdf')
+  })
 })

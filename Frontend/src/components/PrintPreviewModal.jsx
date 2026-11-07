@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Printer } from 'lucide-react'
+import { X, Printer, Download, CheckCircle2 } from 'lucide-react'
 import api from '../utils/api'
 import CustomDatePicker from './ui/CustomDatePicker'
 import { toInputDate, fromInputDate } from '../utils/date'
@@ -139,6 +139,169 @@ function getPreviewBorders(settings) {
   }
 }
 
+export function generatePdfFilename({ type, fields = {}, doc = {} }) {
+  let docType = 'Document'
+  if (type === 'payment') docType = 'Payment_Voucher'
+  else if (type === 'bill') docType = 'Tax_Invoice'
+  else if (type === 'loan') docType = 'Loan_Drawdown'
+  else if (type === 'repayment') docType = 'Loan_Repayment'
+  else if (fields?.title) docType = fields.title.trim().replace(/\s+/g, '_')
+
+  let vendorName = ''
+  if (type === 'payment') {
+    vendorName = fields?.recipientName || doc?.vendorId?.name || ''
+  } else if (type === 'bill') {
+    vendorName = fields?.supplierName || doc?.vendorId?.name || ''
+  } else {
+    vendorName = fields?.recipientName || fields?.supplierName || doc?.partyName || ''
+  }
+
+  // If vendorName is empty or matches Vastrams (the issuer), look up the other side
+  if (!vendorName || vendorName.trim().toLowerCase() === 'vastrams') {
+    if (fields?.recipientName && fields.recipientName.trim().toLowerCase() !== 'vastrams') {
+      vendorName = fields.recipientName
+    } else if (fields?.supplierName && fields.supplierName.trim().toLowerCase() !== 'vastrams') {
+      vendorName = fields.supplierName
+    } else {
+      vendorName = 'Vendor'
+    }
+  }
+
+  // Clean vendor name: remove invalid filename characters, replace whitespace with underscores
+  const cleanVendor = vendorName
+    .trim()
+    .replace(/[<>:"/\\|?*]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'Vendor'
+
+  // Document Date in YYYY-MM-DD
+  let dateStr = ''
+  if (fields?.docDate) {
+    dateStr = toInputDate(fields.docDate)
+  }
+  if (!dateStr && doc) {
+    const raw = doc.paymentDate || doc.billDate || doc.drawdownDate || doc.repaymentDate || doc.date
+    if (raw) dateStr = toInputDate(raw)
+  }
+  if (!dateStr) {
+    const today = new Date()
+    const y = today.getFullYear()
+    const m = String(today.getMonth() + 1).padStart(2, '0')
+    const d = String(today.getDate()).padStart(2, '0')
+    dateStr = `${y}-${m}-${d}`
+  }
+
+  return `${docType}_${cleanVendor}_${dateStr}.pdf`
+}
+
+export async function downloadInvoicePdf(element, filename, options = {}) {
+  if (!element) {
+    throw new Error('Document preview element not found')
+  }
+
+  // Unfocus active element to commit any in-progress contentEditable changes
+  if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
+    document.activeElement.blur()
+  }
+
+  // Wait for any images (e.g. QR code) inside element to finish loading
+  const images = Array.from(element.querySelectorAll('img'))
+  await Promise.all(
+    images.map(img => {
+      if (img.complete) return Promise.resolve()
+      return new Promise(resolve => {
+        img.onload = resolve
+        img.onerror = resolve
+      })
+    })
+  )
+
+  const [{ jsPDF }, html2canvasModule] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas')
+  ])
+  const html2canvas = html2canvasModule.default || html2canvasModule
+
+  // Render element to high-res canvas (scale 2 = crisp 300dpi output)
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: '#ffffff',
+    logging: false,
+    scrollX: 0,
+    scrollY: 0,
+    windowWidth: element.scrollWidth || 800,
+    onclone: (clonedDoc) => {
+      const el = clonedDoc.querySelector('.printable-preview-content') || clonedDoc.querySelector('.print-container')
+      if (el) {
+        el.style.boxShadow = 'none'
+        el.style.borderRadius = '0px'
+        el.style.transform = 'none'
+        el.style.width = '800px'
+        el.style.maxWidth = '800px'
+        el.style.margin = '0 auto'
+      }
+      clonedDoc.querySelectorAll('[contenteditable]').forEach(node => {
+        node.style.outline = 'none'
+        node.style.border = 'none'
+      })
+    }
+  })
+
+  if (!canvas || canvas.width === 0 || canvas.height === 0) {
+    throw new Error('Canvas rendering produced an empty image')
+  }
+
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true
+  })
+
+  const pageWidth = 210
+  const pageHeight = 297
+  const margin = 10
+  const printableWidth = pageWidth - (margin * 2) // 190mm
+  const printableHeight = pageHeight - (margin * 2) // 277mm
+
+  const imgWidth = printableWidth
+  const imgHeight = (canvas.height * imgWidth) / canvas.width
+  const imgData = canvas.toDataURL('image/png')
+
+  if (!imgData || imgData.length < 100) {
+    throw new Error('Failed to generate image data for PDF')
+  }
+
+  // Single-page fit optimization: If the content is slightly taller than printable height (within 8%),
+  // scale it slightly to fit cleanly on one single page and eliminate unnecessary blank second page
+  if (imgHeight <= printableHeight * 1.08) {
+    const finalHeight = Math.min(imgHeight, printableHeight)
+    const finalWidth = (imgHeight > printableHeight) ? (imgWidth * (printableHeight / imgHeight)) : imgWidth
+    const xPos = margin + ((printableWidth - finalWidth) / 2)
+    pdf.addImage(imgData, 'PNG', xPos, margin, finalWidth, finalHeight, undefined, 'FAST')
+  } else {
+    // Multi-page document
+    let heightLeft = imgHeight
+    let position = margin
+
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight, undefined, 'FAST')
+    heightLeft -= printableHeight
+
+    while (heightLeft > 0) {
+      position -= printableHeight
+      pdf.addPage()
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight, undefined, 'FAST')
+      heightLeft -= printableHeight
+    }
+  }
+
+  pdf.save(filename)
+  return true
+}
+
 export function printInvoiceElement(element, docTitle, settings = {}) {
   if (!element) return
 
@@ -268,6 +431,8 @@ export function PrintPreviewModal({ type, id, onClose }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [pdfError, setPdfError] = useState(null)
 
   // Visible sections toggles (HSN, Qty, TaxTable all off by default)
   const [settings, setSettings] = useState({
@@ -513,42 +678,29 @@ export function PrintPreviewModal({ type, id, onClose }) {
     fetchData()
   }, [type, id])
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     // Unfocus active element to commit any in-progress contentEditable changes
-    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+    if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
       document.activeElement.blur()
     }
 
-    // Construct clear dynamic document title for printing / Save as PDF
-    const titleParts = []
-    if (fields.title) titleParts.push(fields.title.trim())
-    if (fields.docNo) titleParts.push(fields.docNo.trim())
-    const partner = (fields.recipientName || fields.supplierName || '').trim()
-    if (partner && partner !== (profile?.businessName || 'Vastrams')) {
-      titleParts.push(partner)
+    try {
+      setDownloadingPdf(true)
+      setPdfError(null)
+
+      const targetElement = invoiceRef.current || document.querySelector('.printable-preview-content')
+      if (!targetElement) {
+        throw new Error('Document preview element not found')
+      }
+
+      const filename = generatePdfFilename({ type, fields, doc })
+      await downloadInvoicePdf(targetElement, filename, { settings })
+    } catch (err) {
+      console.error('Failed to generate and download PDF directly:', err)
+      setPdfError('Failed to generate PDF. Please try again.')
+    } finally {
+      setDownloadingPdf(false)
     }
-    const dateObj = fields.docDate ? new Date(toInputDate(fields.docDate)) : null
-    const documentDateStr = dateObj && !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-    if (documentDateStr && documentDateStr !== '—') titleParts.push(documentDateStr.trim())
-
-    const dynamicTitle = titleParts.length > 0 ? titleParts.join(' - ') : (fields.title || 'Document')
-    const originalTitle = document.title
-
-    document.title = dynamicTitle
-
-    const targetElement = invoiceRef.current || document.querySelector('.printable-preview-content')
-
-    if (targetElement) {
-      printInvoiceElement(targetElement, dynamicTitle, settings)
-    } else {
-      setTimeout(() => {
-        window.print()
-      }, 50)
-    }
-
-    setTimeout(() => {
-      document.title = originalTitle
-    }, 1500)
   }
 
   if (!type || !id) return null
@@ -974,7 +1126,7 @@ export function PrintPreviewModal({ type, id, onClose }) {
                 {settings.showQr && (
                   <div className="text-right flex flex-col items-end">
                     <span contentEditable={true} suppressContentEditableWarning={true} className="text-[10px] font-bold tracking-widest uppercase mb-1 outline-none text-slate-500">e-Invoice</span>
-                    <img src={qrImageUrl} alt="QR Code" className="w-20 h-20 border border-slate-900 p-0.5 bg-white shadow-sm" />
+                    <img src={qrImageUrl} alt="QR Code" crossOrigin="anonymous" className="w-20 h-20 border border-slate-900 p-0.5 bg-white shadow-sm" />
                   </div>
                 )}
               </div>
@@ -1476,20 +1628,36 @@ export function PrintPreviewModal({ type, id, onClose }) {
         </div>
 
         {/* Footer actions */}
-        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-200 dark:border-slate-700 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2.5 bg-slate-50 dark:bg-slate-800/50 no-print">
-          <button
-            onClick={onClose}
-            className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 text-sm font-semibold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handlePrint}
-            className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition"
-          >
-            <Printer size={16} />
-            <span>Print Document</span>
-          </button>
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-200 dark:border-slate-700 flex flex-col-reverse sm:flex-row justify-between items-center gap-2 sm:gap-2.5 bg-slate-50 dark:bg-slate-800/50 no-print">
+          <div>
+            {pdfError && <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">{pdfError}</span>}
+          </div>
+          <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto justify-end">
+            <button
+              onClick={onClose}
+              disabled={downloadingPdf}
+              className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 text-sm font-semibold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handlePrint}
+              disabled={downloadingPdf || loading}
+              className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg shadow-sm transition"
+            >
+              {downloadingPdf ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1" />
+                  <span>Downloading PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Download size={16} />
+                  <span>Print Document</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
       </div>
