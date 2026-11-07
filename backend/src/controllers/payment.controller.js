@@ -63,6 +63,7 @@ exports.createPayment = async (req, res, next) => {
         vendorId,
         amount,
         chequeDate: paymentDate || new Date(),
+        bankName: vendor.bankName || '',
         status: 'PENDING'
       })
       await cheque.save({ session })
@@ -286,6 +287,7 @@ exports.updatePayment = async (req, res, next) => {
             vendorId: targetVendorId,
             amount: newAmount,
             chequeDate: paymentDate || payment.paymentDate || new Date(),
+            bankName: vendor.bankName || '',
             status: 'PENDING'
           })
           await cheque.save({ session })

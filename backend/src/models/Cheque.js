@@ -50,6 +50,11 @@ const ChequeSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  bankName: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   status: {
     type: String,
     required: true,

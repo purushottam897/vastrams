@@ -10,7 +10,11 @@ router.route('/')
   .post(requireRole(['Admin']), validateCheque, chequeController.createCheque)
   .get(chequeController.getCheques)
 
+router.route('/:id')
+  .put(requireRole(['Admin']), chequeController.updateCheque)
+  .patch(requireRole(['Admin']), chequeController.updateCheque)
+  .delete(requireRole(['Admin']), chequeController.deleteCheque)
+
 router.patch('/:id/status', requireRole(['Admin']), chequeController.updateChequeStatus)
-router.delete('/:id', requireRole(['Admin']), chequeController.deleteCheque)
 
 module.exports = router

@@ -52,6 +52,44 @@ const getStatusBadgeVariant = (status) => {
   return 'neutral'
 }
 
+const getChequeSchedule = (cheque) => {
+  const rawStatus = cheque.rawStatus || 'PENDING'
+  if (rawStatus === 'CLEARED' || cheque.status === 'cleared') {
+    return { label: 'Cleared', variant: 'success', category: 'cleared', isUpcoming: false, days: null }
+  }
+  if (rawStatus === 'BOUNCED' || cheque.status === 'bounced') {
+    return { label: 'Bounced', variant: 'danger', category: 'bounced', isUpcoming: false, days: null }
+  }
+  if (rawStatus === 'CANCELLED' || cheque.status === 'deposited') {
+    return { label: 'Cancelled', variant: 'neutral', category: 'cancelled', isUpcoming: false, days: null }
+  }
+
+  // It is PENDING (Active Upcoming Cheque)
+  if (!cheque.rawDate) {
+    return { label: 'Upcoming', variant: 'info', category: 'upcoming', isUpcoming: true, days: 0 }
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const chqDate = new Date(cheque.rawDate)
+  chqDate.setHours(0, 0, 0, 0)
+
+  const diffTime = chqDate.getTime() - today.getTime()
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
+
+  if (diffDays === 0) {
+    return { label: 'Due Today', variant: 'warning', category: 'due_today', isUpcoming: true, days: 0 }
+  }
+  if (diffDays > 0 && diffDays <= 7) {
+    return { label: `Due in ${diffDays}d`, variant: 'warning', category: 'due_soon', isUpcoming: true, days: diffDays }
+  }
+  if (diffDays > 7) {
+    return { label: `Upcoming (${diffDays}d)`, variant: 'info', category: 'future', isUpcoming: true, days: diffDays }
+  }
+  return { label: `Due (${Math.abs(diffDays)}d ago)`, variant: 'warning', category: 'due_past', isUpcoming: true, days: diffDays }
+}
+
 export function ChequeRegistry() {
   const toast = useToast()
   const confirm = useConfirm()
@@ -63,7 +101,7 @@ export function ChequeRegistry() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [statusFilter, setStatusFilter] = useState('UPCOMING')
   const [showModal, setShowModal] = useState(false)
   const [modalMode, setModalMode] = useState('add') // 'add' | 'edit' | 'preview'
   const [selectedCheque, setSelectedCheque] = useState(null)
@@ -127,12 +165,14 @@ export function ChequeRegistry() {
         id: c._id,
         chequeNo: c.chequeNumber,
         date: c.chequeDate ? fromInputDate(c.chequeDate.split('T')[0]) : '—',
-        amount: c.amount,
-        bank: c.vendorId?.bank || c.financierId?.bank || '—',
+        rawDate: c.chequeDate ? c.chequeDate.split('T')[0] : '',
+        amount: c.amount || 0,
+        bank: c.bankName || c.vendorId?.bankName || c.vendorId?.bank || c.financierId?.bank || '—',
         partyType: c.type === 'ISSUED_VENDOR' ? 'Vendor' : 'Financier',
         partyId: c.vendorId?._id || c.financierId?._id || '',
         party: c.partyName || (c.vendorId?.name) || (c.financierId?.name) || '—',
         status: BE_STATUS_MAP[c.status] || 'Pending',
+        rawStatus: c.status || 'PENDING',
         remarks: c.bounceReason || '—',
         idx,
       }))
@@ -166,7 +206,11 @@ export function ChequeRegistry() {
   useEffect(() => {
     const handleDataChanged = () => fetchData()
     window.addEventListener('api-data-changed', handleDataChanged)
-    return () => window.removeEventListener('api-data-changed', handleDataChanged)
+    window.addEventListener('vastrams:data-restored', handleDataChanged)
+    return () => {
+      window.removeEventListener('api-data-changed', handleDataChanged)
+      window.removeEventListener('vastrams:data-restored', handleDataChanged)
+    }
   }, [])
 
   const handleOpenAdd = () => {
@@ -228,7 +272,7 @@ export function ChequeRegistry() {
           amount: Number(form.amount) || 0,
           bankName: form.bank,
           type: BE_TYPE_MAP[form.partyType] || 'ISSUED_VENDOR',
-          status: FE_STATUS_MAP[form.status] || 'PENDING',
+          status: modalMode === 'add' ? 'PENDING' : (FE_STATUS_MAP[form.status] || 'PENDING'),
           bounceReason: form.remarks,
           partyName: form.party,
           vendorId: form.partyType === 'Vendor' ? selectedPartyId : undefined,
@@ -274,23 +318,66 @@ export function ChequeRegistry() {
         : []
   }, [form.partyType, vendors, financiers])
 
+  const upcomingCheques = useMemo(() => {
+    return cheques.filter(c => !c.rawStatus || c.rawStatus === 'PENDING')
+  }, [cheques])
+
+  const totalUpcomingAmount = useMemo(() => {
+    return upcomingCheques.reduce((s, c) => s + (c.amount || 0), 0)
+  }, [upcomingCheques])
+
+  const approachingCheques = useMemo(() => {
+    return upcomingCheques.filter(c => {
+      const s = getChequeSchedule(c)
+      return s.days !== null && s.days >= 0 && s.days <= 7
+    })
+  }, [upcomingCheques])
+
+  const approachingAmount = useMemo(() => {
+    return approachingCheques.reduce((s, c) => s + (c.amount || 0), 0)
+  }, [approachingCheques])
+
+  const futureCheques = useMemo(() => {
+    return upcomingCheques.filter(c => {
+      const s = getChequeSchedule(c)
+      return s.days !== null && s.days > 7
+    })
+  }, [upcomingCheques])
+
+  const futureAmount = useMemo(() => {
+    return futureCheques.reduce((s, c) => s + (c.amount || 0), 0)
+  }, [futureCheques])
+
+  const clearedCount = useMemo(() => cheques.filter(c => c.rawStatus === 'CLEARED' || c.status === 'cleared').length, [cheques])
+  const bouncedCount = useMemo(() => cheques.filter(c => c.rawStatus === 'BOUNCED' || c.status === 'bounced').length, [cheques])
+
   const filtered = useMemo(() => {
     return cheques.filter(c => {
       const matchSearch =
         (c.chequeNo || '').includes(search) ||
         (c.party || '').toLowerCase().includes(search.toLowerCase()) ||
         (c.bank || '').toLowerCase().includes(search.toLowerCase())
-      const matchStatus =
-        statusFilter === 'ALL' ||
-        c.status.toLowerCase() === statusFilter.toLowerCase()
-      return matchSearch && matchStatus
+
+      const s = getChequeSchedule(c)
+      let matchFilter = true
+
+      if (statusFilter === 'UPCOMING') {
+        matchFilter = s.isUpcoming
+      } else if (statusFilter === 'DUE_SOON') {
+        matchFilter = s.isUpcoming && s.days !== null && s.days >= 0 && s.days <= 7
+      } else if (statusFilter === 'FUTURE') {
+        matchFilter = s.isUpcoming && s.days !== null && s.days > 7
+      } else if (statusFilter === 'ALL') {
+        matchFilter = true
+      } else if (statusFilter === 'cleared') {
+        matchFilter = c.rawStatus === 'CLEARED' || c.status === 'cleared'
+      } else if (statusFilter === 'bounced') {
+        matchFilter = c.rawStatus === 'BOUNCED' || c.status === 'bounced'
+      }
+
+      return matchSearch && matchFilter
     })
   }, [cheques, search, statusFilter])
-
-  const pendingCount = useMemo(() => cheques.filter(c => c.status === 'Pending').length, [cheques])
-  const clearedCount = useMemo(() => cheques.filter(c => c.status === 'cleared').length, [cheques])
-  const bouncedCount = useMemo(() => cheques.filter(c => c.status === 'bounced').length, [cheques])
-  const totalPendingAmount = useMemo(() => cheques.filter(c => c.status === 'Pending').reduce((s, c) => s + (c.amount || 0), 0), [cheques])
 
   const tableContainerRef = React.useRef(null)
 
@@ -307,7 +394,7 @@ export function ChequeRegistry() {
       {/* Header */}
       <PageHeader
         title="Cheque Registry"
-        description={`${cheques.length} total cheques · Track in-transit, clearing, and bounced banking instruments`}
+        description={`${upcomingCheques.length} upcoming cheques (₹${fmt(totalUpcomingAmount)}) · Track scheduled and approaching banking instruments`}
         breadcrumbs={[{ label: 'Cheques' }]}
       >
         <Button onClick={handleOpenAdd} className="shadow-sm">
@@ -317,37 +404,36 @@ export function ChequeRegistry() {
       </PageHeader>
 
       {/* KPI Stats */}
-      {/* KPI Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-5">
         <KpiCard
-          title="Pending Clearing"
-          value={loading ? <Skeleton className="h-8 w-16" /> : String(pendingCount)}
-          subtitle={`₹${fmt(totalPendingAmount)} in transit`}
+          title="Upcoming Cheques"
+          value={loading ? <Skeleton className="h-8 w-16" /> : String(upcomingCheques.length)}
+          subtitle={`₹${fmt(totalUpcomingAmount)} scheduled`}
           icon={Clock}
           iconColor="text-amber-600 dark:text-amber-400"
           iconBg="bg-amber-50 dark:bg-amber-950/40 border-amber-100 dark:border-amber-900/40"
         />
         <KpiCard
-          title="Cleared Cheques"
-          value={loading ? <Skeleton className="h-8 w-16" /> : String(clearedCount)}
-          subtitle="Successfully processed"
-          icon={CheckCircle2}
-          iconColor="text-emerald-600 dark:text-emerald-400"
-          iconBg="bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900/40"
-        />
-        <KpiCard
-          title="Bounced Cheques"
-          value={loading ? <Skeleton className="h-8 w-16" /> : String(bouncedCount)}
-          subtitle="Requires attention"
+          title="Approaching (≤ 7 Days)"
+          value={loading ? <Skeleton className="h-8 w-16" /> : String(approachingCheques.length)}
+          subtitle={`₹${fmt(approachingAmount)} due soon`}
           icon={AlertTriangle}
-          iconColor="text-rose-600 dark:text-rose-400"
-          iconBg="bg-rose-50 dark:bg-rose-950/40 border-rose-100 dark:border-rose-900/40"
+          iconColor="text-orange-600 dark:text-orange-400"
+          iconBg="bg-orange-50 dark:bg-orange-950/40 border-orange-100 dark:border-orange-900/40"
         />
         <KpiCard
-          title="Total Registered"
-          value={loading ? <Skeleton className="h-8 w-16" /> : String(cheques.length)}
-          subtitle="All recorded instruments"
+          title="Future Dated (> 7 Days)"
+          value={loading ? <Skeleton className="h-8 w-16" /> : String(futureCheques.length)}
+          subtitle={`₹${fmt(futureAmount)} scheduled ahead`}
           icon={CheckSquare}
+          iconColor="text-blue-600 dark:text-blue-400"
+          iconBg="bg-blue-50 dark:bg-blue-950/40 border-blue-100 dark:border-blue-900/40"
+        />
+        <KpiCard
+          title="Total Instruments"
+          value={loading ? <Skeleton className="h-8 w-16" /> : String(cheques.length)}
+          subtitle={`${clearedCount} cleared · ${bouncedCount} bounced`}
+          icon={CheckCircle2}
           iconColor="text-slate-600 dark:text-slate-300"
           iconBg="bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
         />
@@ -358,18 +444,19 @@ export function ChequeRegistry() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search by cheque #, party name, bank..."
-        isFiltered={search !== '' || statusFilter !== 'ALL'}
-        onReset={() => { setSearch(''); setStatusFilter('ALL') }}
+        isFiltered={search !== '' || statusFilter !== 'UPCOMING'}
+        onReset={() => { setSearch(''); setStatusFilter('UPCOMING') }}
       >
-        <div className="w-full sm:w-48">
+        <div className="w-full sm:w-56">
           <DropdownSelect
             value={statusFilter}
             onChange={setStatusFilter}
             options={[
-              { value: 'ALL', label: 'All Statuses' },
-              { value: 'Pending', label: 'Pending' },
+              { value: 'UPCOMING', label: 'Upcoming Cheques' },
+              { value: 'DUE_SOON', label: 'Approaching (≤ 7 Days)' },
+              { value: 'FUTURE', label: 'Future Dated (> 7 Days)' },
+              { value: 'ALL', label: 'All Cheques' },
               { value: 'cleared', label: 'Cleared' },
-              { value: 'deposited', label: 'Deposited / Cancelled' },
               { value: 'bounced', label: 'Bounced' }
             ]}
           />
@@ -439,9 +526,14 @@ export function ChequeRegistry() {
                       </span>
                       <span className="text-xs text-slate-500 font-medium">{c.date}</span>
                     </div>
-                    <Badge variant={getStatusBadgeVariant(c.status)} dot>
-                      {toTitleCase(c.status)}
-                    </Badge>
+                    {(() => {
+                      const sched = getChequeSchedule(c)
+                      return (
+                        <Badge variant={sched.variant} dot>
+                          {sched.label}
+                        </Badge>
+                      )
+                    })()}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs py-2 px-3 rounded-lg bg-slate-50/80 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
@@ -535,9 +627,14 @@ export function ChequeRegistry() {
                       </td>
                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[200px]">{toTitleCase(c.party)}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge variant={getStatusBadgeVariant(c.status)} dot>
-                          {toTitleCase(c.status)}
-                        </Badge>
+                        {(() => {
+                          const sched = getChequeSchedule(c)
+                          return (
+                            <Badge variant={sched.variant} dot>
+                              {sched.label}
+                            </Badge>
+                          )
+                        })()}
                       </td>
                       <td className="px-6 py-4 text-slate-400 italic truncate max-w-[180px]">{c.remarks || '—'}</td>
                       <td className="px-6 py-4 text-right whitespace-nowrap">
@@ -621,9 +718,14 @@ export function ChequeRegistry() {
                         <span className="text-slate-400 block text-[10px] uppercase font-bold">{selectedCheque?.partyType}</span>
                         <p className="font-bold text-sm text-slate-900 dark:text-slate-100 mt-0.5">{toTitleCase(selectedCheque?.party)}</p>
                       </div>
-                      <Badge variant={getStatusBadgeVariant(selectedCheque?.status)} dot>
-                        {toTitleCase(selectedCheque?.status)}
-                      </Badge>
+                      {(() => {
+                        const sched = getChequeSchedule(selectedCheque)
+                        return (
+                          <Badge variant={sched.variant} dot>
+                            {sched.label}
+                          </Badge>
+                        )
+                      })()}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700/80">
@@ -725,21 +827,36 @@ export function ChequeRegistry() {
                           onChange={d => setForm({...form, date: d})}
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Cheque Status <span className="text-rose-500">*</span>
-                        </label>
-                        <DropdownSelect
-                          value={form.status}
-                          onChange={val => setForm({...form, status: val})}
-                          options={[
-                            { value: 'Pending', label: 'Pending' },
-                            { value: 'cleared', label: 'Cleared' },
-                            { value: 'deposited', label: 'Deposited / Cancelled' },
-                            { value: 'bounced', label: 'Bounced' }
-                          ]}
-                        />
-                      </div>
+                      {modalMode === 'add' ? (
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            Cheque Status
+                          </label>
+                          <div className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                            <span className="font-medium">Upcoming (Pending Clearing)</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            New cheques automatically register as upcoming instruments.
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            Cheque Status <span className="text-rose-500">*</span>
+                          </label>
+                          <DropdownSelect
+                            value={form.status}
+                            onChange={val => setForm({...form, status: val})}
+                            options={[
+                              { value: 'Pending', label: 'Pending (Upcoming)' },
+                              { value: 'cleared', label: 'Cleared' },
+                              { value: 'bounced', label: 'Bounced' },
+                              { value: 'deposited', label: 'Deposited / Cancelled' }
+                            ]}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div>
