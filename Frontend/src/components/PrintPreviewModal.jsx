@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Printer } from 'lucide-react'
 import api from '../utils/api'
@@ -139,7 +139,131 @@ function getPreviewBorders(settings) {
   }
 }
 
+export function printInvoiceElement(element, docTitle, settings = {}) {
+  if (!element) return
+
+  // Unfocus active element to commit any in-progress contentEditable changes
+  if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
+    document.activeElement.blur()
+  }
+
+  // Create an isolated hidden iframe
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('style', 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;z-index:-1;')
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentWindow.document
+  doc.open()
+
+  // Collect all stylesheets and style blocks from the main document to preserve Tailwind CSS & fonts
+  const headElements = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    .map(el => el.outerHTML)
+    .join('\n')
+
+  const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
+  const fontFamily = settings.fontFamily || 'Inter, sans-serif'
+  const outerBorder = getPreviewBorders(settings).outer
+
+  doc.write(`
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <title>${docTitle || 'Tax Invoice'}</title>
+        ${headElements}
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+          }
+          *, *::before, *::after {
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #0f172a !important;
+            width: 100% !important;
+            height: auto !important;
+          }
+          body {
+            font-family: ${fontFamily};
+            background: #ffffff;
+          }
+          .invoice-print-root {
+            width: 100% !important;
+            max-width: 800px !important;
+            margin: 0 auto !important;
+            padding: 16px 20px !important;
+            background: #ffffff !important;
+            color: #0f172a !important;
+            box-sizing: border-box !important;
+            border: ${outerBorder} !important;
+            transform: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            page-break-inside: auto;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tfoot {
+            display: table-footer-group;
+          }
+          [contenteditable] {
+            outline: none !important;
+            border-color: transparent !important;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="printable-preview-content ${fontClass} invoice-print-root">
+          ${element.innerHTML}
+        </div>
+      </body>
+    </html>
+  `)
+  doc.close()
+
+  const triggerIframePrint = () => {
+    try {
+      iframe.contentWindow.focus()
+      iframe.contentWindow.print()
+    } catch {
+      window.print()
+    } finally {
+      setTimeout(() => {
+        if (iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe)
+        }
+      }, 2000)
+    }
+  }
+
+  // Ensure iframe resources (QR image, fonts) have a brief moment to render
+  if (iframe.contentWindow.document.readyState === 'complete') {
+    setTimeout(triggerIframePrint, 150)
+  } else {
+    iframe.contentWindow.addEventListener('load', () => {
+      setTimeout(triggerIframePrint, 150)
+    }, { once: true })
+    setTimeout(triggerIframePrint, 500)
+  }
+}
+
 export function PrintPreviewModal({ type, id, onClose }) {
+  const invoiceRef = useRef(null)
   const [doc, setDoc] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -412,13 +536,19 @@ export function PrintPreviewModal({ type, id, onClose }) {
 
     document.title = dynamicTitle
 
-    // Give a brief tick for blur event handlers to flush state before opening browser print dialog
-    setTimeout(() => {
-      window.print()
+    const targetElement = invoiceRef.current || document.querySelector('.printable-preview-content')
+
+    if (targetElement) {
+      printInvoiceElement(targetElement, dynamicTitle, settings)
+    } else {
       setTimeout(() => {
-        document.title = originalTitle
-      }, 1000)
-    }, 50)
+        window.print()
+      }, 50)
+    }
+
+    setTimeout(() => {
+      document.title = originalTitle
+    }, 1500)
   }
 
   if (!type || !id) return null
@@ -791,6 +921,7 @@ export function PrintPreviewModal({ type, id, onClose }) {
           {/* Interactive Editable A4 Preview (Right Column) */}
           <div className="flex-1 overflow-auto bg-slate-100 dark:bg-slate-900 p-2 sm:p-6 lg:p-8 flex items-start justify-center relative print-preview-column">
             <div 
+              ref={invoiceRef}
               className={`printable-preview-content w-full max-w-[800px] bg-white text-slate-900 rounded-lg shadow-xl p-4 sm:p-8 leading-tight origin-top transition-colors ${
                 settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
               }`} 

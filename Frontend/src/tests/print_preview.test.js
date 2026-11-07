@@ -89,5 +89,8 @@ test('A4 Invoice & Voucher Designer Print Feature Tests', async (t) => {
     // Must include portal and isolated printing styles
     assert.ok(modalContent.includes('createPortal'), 'Must use React createPortal to isolate modal from #root layout constraints')
     assert.ok(modalContent.includes('.printable-preview-content'), 'Must define styles for printable-preview-content')
+    assert.ok(modalContent.includes('printInvoiceElement'), 'Must export and call printInvoiceElement')
+    assert.ok(modalContent.includes('invoiceRef'), 'Must attach ref to invoice preview element')
+    assert.ok(modalContent.includes('size: A4 portrait'), 'Must define A4 portrait page size in print styles')
   })
 })
