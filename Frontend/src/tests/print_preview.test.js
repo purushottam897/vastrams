@@ -93,4 +93,23 @@ test('A4 Invoice & Voucher Designer Print Feature Tests', async (t) => {
     assert.ok(modalContent.includes('invoiceRef'), 'Must attach ref to invoice preview element')
     assert.ok(modalContent.includes('size: A4 portrait'), 'Must define A4 portrait page size in print styles')
   })
+
+  await t.test('Payment Voucher does not contain Allocated Bills section', () => {
+    const modalFilePath = path.resolve('src/components/PrintPreviewModal.jsx')
+    const modalContent = fs.readFileSync(modalFilePath, 'utf-8')
+
+    const printDocFilePath = path.resolve('src/pages/PrintDocument.jsx')
+    const printDocContent = fs.readFileSync(printDocFilePath, 'utf-8')
+
+    // Neither file should render "Allocated Bills:"
+    assert.equal(modalContent.includes('Allocated Bills:'), false, 'PrintPreviewModal must not contain Allocated Bills')
+    assert.equal(printDocContent.includes('Allocated Bills:'), false, 'PrintDocument must not contain Allocated Bills')
+
+    // Neither file should render bill settlement lines
+    assert.equal(modalContent.includes('Settled: ₹'), false, 'PrintPreviewModal must not contain bill settlement lines')
+    assert.equal(printDocContent.includes('Settled: ₹'), false, 'PrintDocument must not contain bill settlement lines')
+
+    // Must preserve payment description logic
+    assert.ok(modalContent.includes('initialFields.description = `Payment via'), 'Must preserve payment description format')
+  })
 })

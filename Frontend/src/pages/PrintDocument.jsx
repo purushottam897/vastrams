@@ -515,14 +515,6 @@ export function PrintDocument() {
                   <>
                     <p className="font-bold">Payment to {partyName}</p>
                     <p className="text-[10px] text-slate-500">Settled Outstanding payables via {mode}</p>
-                    {doc.allocations && doc.allocations.length > 0 && (
-                      <div className="mt-3 text-[10px] space-y-0.5 border-t pt-2 border-dashed border-slate-300">
-                        <p className="font-bold text-slate-600">Allocated Bills:</p>
-                        {doc.allocations.map((alloc, idx) => (
-                          <p key={idx}>Bill: <span className="font-semibold">{alloc.billNo}</span> - Settled: ₹{fmt(alloc.adjusted)}</p>
-                        ))}
-                      </div>
-                    )}
                   </>
                 )}
                 {type === 'loan' && (

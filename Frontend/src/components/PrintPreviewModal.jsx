@@ -1224,14 +1224,6 @@ export function PrintPreviewModal({ type, id, onClose }) {
                     <td className="p-2 space-y-1" style={{ borderRight: getPreviewBorders(settings).cell }}>
                       <p className="font-bold">{fields.description}</p>
                       {type === 'bill' && <p className="text-[10px] text-slate-500 dark:text-slate-400">Service rendered as per bill {fields.docNo}</p>}
-                      {type === 'payment' && doc.allocations && doc.allocations.length > 0 && (
-                        <div className="mt-3 text-[10px] space-y-0.5 border-t pt-2 border-dashed border-slate-300 dark:border-slate-600">
-                          <p className="font-bold text-slate-600 dark:text-slate-300">Allocated Bills:</p>
-                          {doc.allocations.map((alloc, idx) => (
-                            <p key={idx}>Bill: <span className="font-semibold">{alloc.billNo}</span> - Settled: ₹{fmt(alloc.adjusted)}</p>
-                          ))}
-                        </div>
-                      )}
                       {type === 'loan' && (
                         <div className="mt-2 text-[10px] space-y-0.5 border-t pt-1 border-dashed border-slate-300 dark:border-slate-600">
                           <p className="font-bold text-slate-700 dark:text-slate-200">Loan & Interest Parameters:</p>
