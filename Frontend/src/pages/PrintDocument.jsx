@@ -86,14 +86,6 @@ export function PrintDocument() {
         const data = await api.get(endpoint)
         setDoc(data)
         setError(null)
-
-        try {
-          const tokenRes = await api.post('/documents/token', { type, id })
-          if (tokenRes?.token) {
-            setDocToken(tokenRes.token)
-            if (tokenRes.publicUrl) setDocPublicUrl(tokenRes.publicUrl)
-          }
-        } catch {}
       } catch (err) {
         setError(err.message || 'Failed to fetch document details')
       } finally {
@@ -105,8 +97,6 @@ export function PrintDocument() {
 
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [pdfError, setPdfError] = useState(null)
-  const [docToken, setDocToken] = useState('')
-  const [docPublicUrl, setDocPublicUrl] = useState('')
 
   const handlePrint = async () => {
     try {
@@ -118,27 +108,13 @@ export function PrintDocument() {
         throw new Error('Document preview element not found')
       }
 
-      let activeToken = docToken
-      if (!activeToken) {
-        try {
-          const tokenRes = await api.post('/documents/token', { type, id })
-          if (tokenRes?.token) {
-            activeToken = tokenRes.token
-            setDocToken(activeToken)
-            if (tokenRes.publicUrl) setDocPublicUrl(tokenRes.publicUrl)
-          }
-        } catch (e) {
-          console.warn('Failed to register QR token:', e)
-        }
-      }
-
       const vendorName = partyName || doc?.vendorId?.name || ''
       const filename = generatePdfFilename({
         type,
         fields: { title, recipientName: vendorName, supplierName: vendorName, docDate: docDateStr },
         doc
       })
-      await downloadInvoicePdf(targetElement, filename, { token: activeToken })
+      await downloadInvoicePdf(targetElement, filename)
     } catch (err) {
       console.error('Failed to generate and download PDF:', err)
       setPdfError('Failed to generate PDF. Please try again.')
@@ -297,8 +273,7 @@ export function PrintDocument() {
     qrData = `REPAYMENT:${documentNo}|FINANCIER:${partyName}|VAL:${totalAmount}|DATE:${documentDate}`
   }
 
-  const accessibleUrl = docPublicUrl || `${window.location.origin}/api/documents/public/${docToken || `${type}_${id}`}`
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(accessibleUrl)}`
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}`
 
   useEffect(() => {
     if (doc) {

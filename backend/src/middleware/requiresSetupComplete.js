@@ -8,8 +8,7 @@ const bypassPaths = [
   '/api/auth/setup',
   '/api/auth/refresh',
   '/api/auth/logout',
-  '/api/events',
-  '/api/documents/public'
+  '/api/events'
 ]
 
 module.exports = async (req, res, next) => {
