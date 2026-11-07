@@ -32,7 +32,7 @@ const PaymentSchema = new mongoose.Schema({
   paymentMode: {
     type: String,
     required: true,
-    enum: ['CHEQUE', 'BANK_TRANSFER', 'CASH', 'OTHER'],
+    enum: ['CHEQUE', 'BANK_TRANSFER', 'CASH', 'UPI', 'NEFT', 'RTGS', 'NEFT_RTGS', 'ONLINE', 'IMPS', 'OTHER'],
     default: 'BANK_TRANSFER'
   },
   chequeId: {

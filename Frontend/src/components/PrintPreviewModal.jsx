@@ -50,6 +50,7 @@ export function formatPaymentMode(mode) {
   if (mode === 'RTGS') return 'RTGS'
   if (mode === 'UPI') return 'UPI'
   if (mode === 'IMPS') return 'IMPS'
+  if (mode === 'NEFT_RTGS' || mode === 'NEFT / RTGS') return 'NEFT / RTGS'
   
   return String(mode)
     .replace(/_/g, ' ')

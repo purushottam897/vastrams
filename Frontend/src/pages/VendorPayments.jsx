@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useReducer, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trash2, Edit2, Eye, X, Printer, CreditCard, DollarSign, ArrowUpRight } from 'lucide-react'
 import PrintPreviewModal, { formatPaymentMode } from '../components/PrintPreviewModal'
 import { toInputDate, fromInputDate, getTodayFormatted } from '../utils/date'
@@ -54,6 +55,7 @@ function fetchReducer(state, action) {
 }
 
 export function VendorPayments() {
+  const queryClient = useQueryClient()
   const toast = useToast()
   const confirm = useConfirm()
 
@@ -135,11 +137,19 @@ export function VendorPayments() {
         return {
           id: p._id,
           ref: p.referenceNumber || '—',
+          refNum: p.referenceNumber || '',
+          referenceNumber: p.referenceNumber || '',
           vendor: p.vendorId?.name || '—',
           vendorId: p.vendorId?._id || p.vendorId || '',
           date: paymentDateStr,
+          paymentDate: p.paymentDate,
           amount: p.amount,
+          paymentMode: p.paymentMode || 'BANK_TRANSFER',
           mode: formatPaymentMode(p.paymentMode || 'BANK_TRANSFER'),
+          chequeId: p.chequeId?._id || p.chequeId || null,
+          chequeNumber: p.chequeId?.chequeNumber || p.chequeNumber || '',
+          chequeNo: p.chequeId?.chequeNumber || p.chequeNumber || '',
+          chequeDate: p.chequeId?.chequeDate ? fromInputDate(toInputDate(p.chequeId.chequeDate)) : '',
           remarks: p.remarks || `Payment Ref: ${p.referenceNumber}`,
           allocations: mappedAllocations
         }
@@ -204,16 +214,24 @@ export function VendorPayments() {
     setShowModal(true)
   }
 
+  const getDisplayMode = (raw) => {
+    if (!raw) return 'Bank Transfer'
+    const m = String(raw).toUpperCase().trim()
+    if (m === 'CASH') return 'Cash'
+    if (m === 'CHEQUE' || m === 'CHECK') return 'Cheque'
+    if (m === 'UPI') return 'UPI'
+    if (m === 'NEFT') return 'NEFT'
+    if (m === 'RTGS') return 'RTGS'
+    if (m === 'NEFT_RTGS' || m === 'NEFT / RTGS' || m === 'NEFT/RTGS') return 'NEFT / RTGS'
+    if (m === 'BANK_TRANSFER' || m === 'BANK TRANSFER') return 'Bank Transfer'
+    if (m === 'ONLINE') return 'Online'
+    if (m === 'OTHER') return 'Other'
+    return formatPaymentMode(raw)
+  }
+
   const handleOpenEdit = (pay) => {
-    const rawMode = pay.mode || pay.paymentMode
-    let displayMode = 'Bank Transfer'
-    if (rawMode === 'CASH' || rawMode === 'Cash') displayMode = 'Cash'
-    else if (rawMode === 'CHEQUE' || rawMode === 'Cheque') displayMode = 'Cheque'
-    else if (rawMode === 'NEFT') displayMode = 'NEFT'
-    else if (rawMode === 'RTGS') displayMode = 'RTGS'
-    else if (rawMode === 'UPI') displayMode = 'UPI'
-    else if (rawMode === 'Bank Transfer' || rawMode === 'BANK_TRANSFER') displayMode = 'Bank Transfer'
-    else displayMode = rawMode || 'Bank Transfer'
+    const rawMode = pay.paymentMode || pay.mode
+    const displayMode = getDisplayMode(rawMode)
 
     const editObj = {
       ...pay,
@@ -221,7 +239,12 @@ export function VendorPayments() {
       date: pay.date || (pay.paymentDate ? fromInputDate(toInputDate(pay.paymentDate)) : getTodayFormatted()),
       amount: pay.amount || 0,
       mode: displayMode,
-      refNum: pay.refNum || pay.referenceNumber || ''
+      refNum: pay.refNum || pay.referenceNumber || pay.ref || '',
+      referenceNumber: pay.referenceNumber || pay.refNum || pay.ref || '',
+      chequeNumber: pay.chequeNumber || pay.chequeNo || '',
+      chequeNo: pay.chequeNumber || pay.chequeNo || '',
+      chequeDate: pay.chequeDate || pay.date || getTodayFormatted(),
+      remarks: pay.remarks || ''
     }
     setSelectedPay(pay)
     setForm(editObj)
@@ -260,32 +283,51 @@ export function VendorPayments() {
         const modeMapping = {
           'Cash': 'CASH',
           'Cheque': 'CHEQUE',
-          'NEFT': 'BANK_TRANSFER',
-          'RTGS': 'BANK_TRANSFER',
-          'UPI': 'BANK_TRANSFER',
-          'Bank Transfer': 'BANK_TRANSFER'
+          'NEFT': 'NEFT',
+          'RTGS': 'RTGS',
+          'NEFT / RTGS': 'NEFT_RTGS',
+          'UPI': 'UPI',
+          'Bank Transfer': 'BANK_TRANSFER',
+          'Online': 'ONLINE',
+          'Other': 'OTHER'
         }
+
+        const mappedPaymentMode = modeMapping[form.mode] || (
+          form.mode ? String(form.mode).toUpperCase().replace(/[^A-Z0-9_]/g, '_') : 'BANK_TRANSFER'
+        )
 
         const payload = {
           vendorId: selectedVendorObj._id,
           amount: amt,
           paymentDate: toInputDate(form.date),
-          paymentMode: modeMapping[form.mode] || 'BANK_TRANSFER',
-          referenceNumber: form.refNum || form.referenceNumber || selectedPay?.refNum || ('TXN-' + String(Math.floor(100 + Math.random() * 900))),
-          chequeNumber: form.mode === 'Cheque' ? (form.chequeNumber || selectedPay?.chequeNumber || String(Math.floor(100000 + Math.random() * 900000))) : undefined
+          paymentMode: mappedPaymentMode,
+          referenceNumber: form.refNum || form.referenceNumber || selectedPay?.referenceNumber || selectedPay?.ref || ('TXN-' + String(Math.floor(100 + Math.random() * 900))),
+          chequeNumber: form.mode === 'Cheque' ? (form.chequeNumber || form.chequeNo || selectedPay?.chequeNumber || String(Math.floor(100000 + Math.random() * 900000))) : undefined,
+          remarks: form.remarks
         }
 
         try {
           if (isEdit) {
-            await api.put(`/payments/${selectedPay.id}`, payload)
+            const res = await api.put(`/payments/${selectedPay.id}`, payload)
+            if (!res?.data?.success && res?.status >= 400) {
+              throw new Error(res?.data?.message || 'Failed to update payment')
+            }
             toast('Vendor payment updated successfully', 'success')
           } else {
-            await api.post('/payments', payload)
+            const res = await api.post('/payments', payload)
+            if (!res?.data?.success && res?.status >= 400) {
+              throw new Error(res?.data?.message || 'Failed to record payment')
+            }
             toast('Vendor payment recorded successfully', 'success')
           }
           await fetchPaymentsData()
+          try {
+            queryClient.invalidateQueries()
+          } catch {}
+          window.dispatchEvent(new CustomEvent('api-data-changed'))
           setShowModal(false)
           setForm(emptyForm)
+          setSelectedPay(null)
         } catch (err) {
           toast(err.message || 'Failed to save payment', 'error')
           return false
@@ -815,7 +857,9 @@ export function VendorPayments() {
                             { value: 'Cheque', label: 'Cheque' },
                             { value: 'Cash', label: 'Cash' },
                             { value: 'UPI', label: 'UPI' },
-                            { value: 'NEFT', label: 'NEFT / RTGS' }
+                            { value: 'NEFT', label: 'NEFT' },
+                            { value: 'RTGS', label: 'RTGS' },
+                            { value: 'NEFT / RTGS', label: 'NEFT / RTGS' }
                           ]}
                         />
                       </div>
@@ -864,7 +908,7 @@ export function VendorPayments() {
                       </div>
                     )}
 
-                    {(form.mode === 'Bank Transfer' || form.mode === 'NEFT' || form.mode === 'RTGS' || form.mode === 'UPI') && (
+                    {(form.mode === 'Bank Transfer' || form.mode === 'NEFT' || form.mode === 'RTGS' || form.mode === 'UPI' || form.mode === 'NEFT / RTGS') && (
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                           Transaction Reference / UTR Number

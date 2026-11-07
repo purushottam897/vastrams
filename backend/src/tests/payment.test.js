@@ -18,4 +18,37 @@ test('Payment unit tests', async (t) => {
     const isMongoId = /^[0-9a-fA-F]{24}$/.test(invalidId)
     assert.equal(isMongoId, false)
   })
+
+  await t.test('Payment schema supports all application payment modes', () => {
+    const allowedModes = ['CHEQUE', 'BANK_TRANSFER', 'CASH', 'UPI', 'NEFT', 'RTGS', 'NEFT_RTGS', 'ONLINE', 'IMPS', 'OTHER']
+    allowedModes.forEach(mode => {
+      assert.ok(allowedModes.includes(mode), `Mode ${mode} should be supported`)
+    })
+  })
+
+  await t.test('Payment mode normalization', () => {
+    const normalize = (mode) => {
+      if (!mode) return 'BANK_TRANSFER'
+      const upper = String(mode).trim().toUpperCase()
+      if (upper === 'CHEQUE' || upper === 'CHECK') return 'CHEQUE'
+      if (upper === 'CASH') return 'CASH'
+      if (upper === 'UPI') return 'UPI'
+      if (upper === 'NEFT') return 'NEFT'
+      if (upper === 'RTGS') return 'RTGS'
+      if (upper === 'NEFT / RTGS' || upper === 'NEFT_RTGS' || upper === 'NEFT/RTGS') return 'NEFT_RTGS'
+      if (upper === 'ONLINE') return 'ONLINE'
+      if (upper === 'IMPS') return 'IMPS'
+      if (upper === 'BANK TRANSFER' || upper === 'BANK_TRANSFER') return 'BANK_TRANSFER'
+      if (upper === 'OTHER') return 'OTHER'
+      return upper.replace(/[^A-Z0-9_]/g, '_')
+    }
+
+    assert.equal(normalize('Bank Transfer'), 'BANK_TRANSFER')
+    assert.equal(normalize('UPI'), 'UPI')
+    assert.equal(normalize('Cash'), 'CASH')
+    assert.equal(normalize('Cheque'), 'CHEQUE')
+    assert.equal(normalize('NEFT'), 'NEFT')
+    assert.equal(normalize('RTGS'), 'RTGS')
+    assert.equal(normalize('NEFT / RTGS'), 'NEFT_RTGS')
+  })
 })

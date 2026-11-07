@@ -9,12 +9,29 @@ const Vendor = require('../models/Vendor')
 const Bill = require('../models/Bill')
 const Transaction = require('../models/Transaction')
 
+const normalizePaymentMode = (mode) => {
+  if (!mode) return 'BANK_TRANSFER'
+  const upper = String(mode).trim().toUpperCase()
+  if (upper === 'CHEQUE' || upper === 'CHECK') return 'CHEQUE'
+  if (upper === 'CASH') return 'CASH'
+  if (upper === 'UPI') return 'UPI'
+  if (upper === 'NEFT') return 'NEFT'
+  if (upper === 'RTGS') return 'RTGS'
+  if (upper === 'NEFT / RTGS' || upper === 'NEFT_RTGS' || upper === 'NEFT/RTGS') return 'NEFT_RTGS'
+  if (upper === 'ONLINE') return 'ONLINE'
+  if (upper === 'IMPS') return 'IMPS'
+  if (upper === 'BANK TRANSFER' || upper === 'BANK_TRANSFER') return 'BANK_TRANSFER'
+  if (upper === 'OTHER') return 'OTHER'
+  return upper.replace(/[^A-Z0-9_]/g, '_')
+}
+
 exports.createPayment = async (req, res, next) => {
   const session = await mongoose.startSession()
   session.startTransaction()
 
   try {
     const { vendorId, amount, paymentDate, paymentMode, chequeNumber, referenceNumber } = req.body
+    const targetMode = normalizePaymentMode(paymentMode)
 
     // Validate Vendor
     const vendor = await Vendor.findOne({ _id: vendorId, isDeleted: false }).session(session)
@@ -27,11 +44,11 @@ exports.createPayment = async (req, res, next) => {
     // 1. Run FIFO allocation engine
     const { allocations } = await FifoService.allocatePayment(vendorId, amount, session)
 
-    // 2. If paymentMode is CHEQUE, create Cheque Registry item
+    // 2. If targetMode is CHEQUE, create Cheque Registry item
     let chequeId = null
     let refNum = referenceNumber
 
-    if (paymentMode === 'CHEQUE') {
+    if (targetMode === 'CHEQUE') {
       if (!chequeNumber) {
         await session.abortTransaction()
         session.endSession()
@@ -58,7 +75,7 @@ exports.createPayment = async (req, res, next) => {
       vendorId,
       amount,
       paymentDate,
-      paymentMode,
+      paymentMode: targetMode,
       chequeId,
       referenceNumber: refNum,
       allocations
@@ -72,7 +89,7 @@ exports.createPayment = async (req, res, next) => {
       vendorId,
       referenceType: 'Payment',
       referenceId: payment._id,
-      description: `Payment via ${paymentMode} - Ref: ${refNum}`
+      description: `Payment via ${targetMode} - Ref: ${refNum}`
     }, session)
 
     await session.commitTransaction()
@@ -207,6 +224,8 @@ exports.updatePayment = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Vendor not found' })
     }
 
+    const targetMode = paymentMode !== undefined ? normalizePaymentMode(paymentMode) : payment.paymentMode
+
     // 3. Revert old bill allocations
     for (const alloc of payment.allocations) {
       const bill = await Bill.findById(alloc.billId).session(session)
@@ -226,7 +245,7 @@ exports.updatePayment = async (req, res, next) => {
     }
 
     // 5. Handle old cheque if mode changed away from CHEQUE
-    if (payment.chequeId && paymentMode !== 'CHEQUE') {
+    if (payment.chequeId && targetMode !== 'CHEQUE') {
       const oldCheque = await Cheque.findById(payment.chequeId).session(session)
       if (oldCheque) {
         oldCheque.isDeleted = true
@@ -240,11 +259,11 @@ exports.updatePayment = async (req, res, next) => {
     // 6. Run new FIFO allocation engine for target vendor & new amount
     const { allocations } = await FifoService.allocatePayment(targetVendorId, newAmount, session)
 
-    // 7. Handle cheque if paymentMode is CHEQUE
+    // 7. Handle cheque if targetMode is CHEQUE
     let chequeId = payment.chequeId
     let refNum = referenceNumber || payment.referenceNumber
 
-    if (paymentMode === 'CHEQUE') {
+    if (targetMode === 'CHEQUE') {
       if (!chequeNumber && !payment.chequeId) {
         await session.abortTransaction()
         session.endSession()
@@ -280,7 +299,7 @@ exports.updatePayment = async (req, res, next) => {
     payment.vendorId = targetVendorId
     payment.amount = newAmount
     if (paymentDate) payment.paymentDate = paymentDate
-    if (paymentMode) payment.paymentMode = paymentMode
+    payment.paymentMode = targetMode
     payment.chequeId = chequeId
     if (refNum) payment.referenceNumber = refNum
     payment.allocations = allocations
@@ -322,7 +341,12 @@ exports.updatePayment = async (req, res, next) => {
 
     broadcastEvent('data-changed', { entity: 'payment', action: 'update' })
 
-    res.status(200).json({ success: true, data: payment })
+    const updatedPayment = await Payment.findById(payment._id)
+      .populate('vendorId', 'name email')
+      .populate('chequeId', 'chequeNumber status')
+      .populate('allocations.billId', 'billNumber amount paidAmount outstandingAmount')
+
+    res.status(200).json({ success: true, data: updatedPayment || payment })
   } catch (error) {
     await session.abortTransaction()
     session.endSession()

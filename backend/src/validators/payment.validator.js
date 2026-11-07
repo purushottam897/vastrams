@@ -46,7 +46,20 @@ exports.validatePayment = [
 
   body('paymentMode')
     .notEmpty()
-    .withMessage('Payment mode is required'),
+    .withMessage('Payment mode is required')
+    .custom(async (value) => {
+      const allowedModes = [
+        'CHEQUE', 'BANK_TRANSFER', 'CASH', 'UPI', 'NEFT', 'RTGS', 'NEFT_RTGS', 'ONLINE', 'IMPS', 'OTHER',
+        'Cheque', 'Bank Transfer', 'Cash', 'UPI', 'NEFT', 'RTGS', 'NEFT / RTGS', 'Online', 'Other'
+      ]
+      if (allowedModes.includes(value)) return true
+      const Settings = require('../models/Settings')
+      const settings = await Settings.findOne()
+      if (settings?.paymentModes?.some(m => m.name === value || m.name.toUpperCase().replace(/[^A-Z0-9_]/g, '_') === value)) {
+        return true
+      }
+      throw new Error('Invalid payment mode')
+    }),
 
   validate
 ]
