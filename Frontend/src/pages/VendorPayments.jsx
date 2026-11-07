@@ -149,7 +149,12 @@ export function VendorPayments() {
         billNo: b.billNumber,
         vendor: b.vendorId?.name || '—',
         vendorId: b.vendorId?._id || b.vendorId || '',
+        // Full bill fields for FIFO allocation preview
+        originalAmount: b.amount,
+        paidAmount: b.paidAmount || 0,
         outstanding: b.outstandingAmount,
+        billDate: b.billDate ? b.billDate.split('T')[0] : '',
+        dueDate: b.dueDate ? b.dueDate.split('T')[0] : '',
         status: b.status
       }))
 
@@ -179,7 +184,11 @@ export function VendorPayments() {
   useEffect(() => {
     const handleDataChanged = () => fetchPaymentsData()
     window.addEventListener('api-data-changed', handleDataChanged)
-    return () => window.removeEventListener('api-data-changed', handleDataChanged)
+    window.addEventListener('vastrams:data-restored', handleDataChanged)
+    return () => {
+      window.removeEventListener('api-data-changed', handleDataChanged)
+      window.removeEventListener('vastrams:data-restored', handleDataChanged)
+    }
   }, [fetchPaymentsData])
 
   const handleOpenAdd = () => {
@@ -297,27 +306,77 @@ export function VendorPayments() {
     }
   }
 
-  const fifoAllocations = useMemo(() => {
+  // ── FIFO Allocation Preview ────────────────────────────────────────────────
+  // Mirrors the backend fifo.service.js logic exactly (dueDate: 1, billDate: 1)
+  // Returns ALL bills for the selected vendor (paid + outstanding) with per-bill
+  // breakdown of previous payments, current allocation, and remaining balance.
+  const fifoPreview = useMemo(() => {
     const amt = Number(form.amount) || 0
-    const vendorBills = bills.filter(b => b.vendor === form.vendor && b.outstanding > 0)
-    let remaining = amt
-    const result = []
+    const selectedVendorName = form.vendor
 
-    for (const b of vendorBills) {
-      if (remaining <= 0) break
-      const adjusted = Math.min(b.outstanding, remaining)
-      const next = b.outstanding - adjusted
-      result.push({
-        billNo: b.billNo,
-        prev: b.outstanding,
-        adjusted: adjusted,
-        next: next,
-        status: next === 0 ? 'Paid' : 'Partial'
+    if (!selectedVendorName) return { rows: [], summary: null }
+
+    // All bills for this vendor sorted same as backend: dueDate asc, billDate asc
+    const vendorBills = bills
+      .filter(b => b.vendor === selectedVendorName)
+      .slice() // avoid mutating original
+      .sort((a, b) => {
+        if (a.dueDate < b.dueDate) return -1
+        if (a.dueDate > b.dueDate) return 1
+        if (a.billDate < b.billDate) return -1
+        if (a.billDate > b.billDate) return 1
+        return 0
       })
-      remaining -= adjusted
+
+    if (vendorBills.length === 0) return { rows: [], summary: null }
+
+    const totalOriginal = vendorBills.reduce((s, b) => s + (b.originalAmount || 0), 0)
+    const totalPreviouslyPaid = vendorBills.reduce((s, b) => s + (b.paidAmount || 0), 0)
+    const totalOutstandingBefore = vendorBills.reduce((s, b) => s + (b.outstanding || 0), 0)
+
+    // Run FIFO allocation (read-only — does NOT touch actual bill records)
+    let remaining = amt
+    const rows = vendorBills.map(b => {
+      const outstandingBefore = b.outstanding || 0
+      let currentAllocation = 0
+      if (remaining > 0 && outstandingBefore > 0) {
+        currentAllocation = Math.min(outstandingBefore, remaining)
+        remaining -= currentAllocation
+      }
+      const outstandingAfter = outstandingBefore - currentAllocation
+      return {
+        billNo: b.billNo,
+        billDate: b.billDate,
+        originalAmount: b.originalAmount || 0,
+        previouslyPaid: b.paidAmount || 0,
+        outstandingBefore,
+        currentAllocation,
+        outstandingAfter,
+        statusAfter: outstandingAfter === 0 ? 'Paid' : (currentAllocation > 0 ? 'Partial' : (b.paidAmount > 0 ? 'Partial' : 'Unpaid'))
+      }
+    })
+
+    const totalCurrentAllocated = amt - remaining
+    const totalOutstandingAfter = rows.reduce((s, r) => s + r.outstandingAfter, 0)
+    const unallocated = remaining // excess payment beyond all outstanding
+
+    return {
+      rows,
+      summary: {
+        totalOriginal,
+        totalPreviouslyPaid,
+        totalOutstandingBefore,
+        currentPayment: amt,
+        totalCurrentAllocated,
+        unallocated,
+        totalOutstandingAfter
+      }
     }
-    return result
   }, [form.vendor, form.amount, bills])
+
+  // Legacy alias kept for existing preview-mode allocations (unchanged)
+  const fifoAllocations = fifoPreview.rows.filter(r => r.currentAllocation > 0)
+
 
   const tableContainerRef = React.useRef(null)
 
@@ -821,42 +880,145 @@ export function VendorPayments() {
                     )}
 
                     {/* Real-time FIFO Allocation Preview */}
-                    {form.amount && Number(form.amount) > 0 && (
-                      <div className="p-3.5 bg-emerald-50/40 dark:bg-emerald-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/40 space-y-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 block">
-                          Real-time FIFO Allocation Preview
-                        </span>
-                        {fifoAllocations.length === 0 ? (
-                          <p className="text-xs text-slate-500 italic">No outstanding bills for {form.vendor}. This will record as an advance payment.</p>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs">
-                              <thead className="text-[10px] font-bold uppercase text-slate-400 border-b border-emerald-200/40">
-                                <tr>
-                                  <th className="py-1">Bill #</th>
-                                  <th className="py-1 text-right">Prev Balance</th>
-                                  <th className="py-1 text-right text-emerald-700 dark:text-emerald-300">Adjusted</th>
-                                  <th className="py-1 text-right">New Balance</th>
-                                  <th className="py-1 pl-2">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-emerald-100/40">
-                                {fifoAllocations.map((a, idx) => (
-                                  <tr key={idx}>
-                                    <td className="py-1 font-mono text-slate-700 dark:text-slate-300">{a.billNo}</td>
-                                    <td className="py-1 text-right text-slate-500 tabular-nums">₹{fmt(a.prev)}</td>
-                                    <td className="py-1 text-right font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">₹{fmt(a.adjusted)}</td>
-                                    <td className="py-1 text-right text-slate-500 tabular-nums">₹{fmt(a.next)}</td>
-                                    <td className="py-1 pl-2">
-                                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${a.status === 'Paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                        {a.status}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                    {form.vendor && (
+                      <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 overflow-hidden">
+                        {/* Preview Header */}
+                        <div className="px-3.5 py-2 bg-emerald-50/60 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/40 flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                            FIFO Allocation Preview
+                          </span>
+                          {fifoPreview.summary && (
+                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+                              {fifoPreview.rows.length} bill{fifoPreview.rows.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* No bills state */}
+                        {fifoPreview.rows.length === 0 ? (
+                          <div className="px-3.5 py-3 bg-emerald-50/20 dark:bg-emerald-950/10">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 italic">
+                              No bills found for <span className="font-semibold">{form.vendor}</span>.
+                              {Number(form.amount) > 0 && ' This payment will be recorded as an advance.'}
+                            </p>
                           </div>
+                        ) : (
+                          <>
+                            {/* Bill-by-bill breakdown table */}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-[11px]">
+                                <thead className="bg-slate-50/80 dark:bg-slate-900/40 text-[9px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-700/60">
+                                  <tr>
+                                    <th className="px-3 py-2">Bill #</th>
+                                    <th className="px-3 py-2 text-right">Original</th>
+                                    <th className="px-3 py-2 text-right">Prev Paid</th>
+                                    <th className="px-3 py-2 text-right">Outstanding</th>
+                                    <th className="px-3 py-2 text-right text-emerald-700 dark:text-emerald-400">This Payment</th>
+                                    <th className="px-3 py-2 text-right">Remaining</th>
+                                    <th className="px-3 py-2 pl-2">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                                  {fifoPreview.rows.map((r, idx) => {
+                                    const isFullyPaid   = r.outstandingBefore === 0
+                                    const isBeingPaid   = r.currentAllocation > 0
+                                    const isPartial     = r.outstandingAfter > 0 && r.currentAllocation > 0
+                                    const isSettledNow  = r.outstandingAfter === 0 && r.currentAllocation > 0
+                                    return (
+                                      <tr
+                                        key={idx}
+                                        className={
+                                          isFullyPaid ? 'bg-slate-50/40 dark:bg-slate-900/20 opacity-60'
+                                          : isBeingPaid ? 'bg-emerald-50/30 dark:bg-emerald-950/20'
+                                          : ''
+                                        }
+                                      >
+                                        <td className="px-3 py-2 font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                          {r.billNo}
+                                          {r.billDate && (
+                                            <span className="block text-[9px] text-slate-400 font-normal">{r.billDate}</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 text-right text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                                          ₹{fmt(r.originalAmount)}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                                          {r.previouslyPaid > 0
+                                            ? <span className="text-blue-600 dark:text-blue-400 font-medium">₹{fmt(r.previouslyPaid)}</span>
+                                            : <span className="text-slate-300 dark:text-slate-600">—</span>
+                                          }
+                                        </td>
+                                        <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap font-medium">
+                                          {r.outstandingBefore === 0
+                                            ? <span className="text-slate-300 dark:text-slate-600">₹0</span>
+                                            : `₹${fmt(r.outstandingBefore)}`
+                                          }
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                                          {r.currentAllocation > 0
+                                            ? <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{fmt(r.currentAllocation)}</span>
+                                            : <span className="text-slate-300 dark:text-slate-600">—</span>
+                                          }
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                                          {r.outstandingAfter > 0
+                                            ? <span className="text-amber-700 dark:text-amber-400 font-medium">₹{fmt(r.outstandingAfter)}</span>
+                                            : <span className="text-emerald-600 dark:text-emerald-400 font-medium">₹0</span>
+                                          }
+                                        </td>
+                                        <td className="px-3 py-2 pl-2 whitespace-nowrap">
+                                          {isFullyPaid && !isSettledNow ? (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">Paid</span>
+                                          ) : isSettledNow ? (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">✓ Paid</span>
+                                          ) : isPartial ? (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">Partial</span>
+                                          ) : (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">Unpaid</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Summary strip */}
+                            {fifoPreview.summary && (
+                              <div className="border-t border-slate-100 dark:border-slate-700/60 bg-slate-50/60 dark:bg-slate-900/30 px-3.5 py-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500 dark:text-slate-400">Total Outstanding Before</span>
+                                  <span className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">₹{fmt(fifoPreview.summary.totalOutstandingBefore)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500 dark:text-slate-400">Current Payment</span>
+                                  <span className="font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">₹{fmt(fifoPreview.summary.currentPayment)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500 dark:text-slate-400">Total Allocated</span>
+                                  <span className="font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">₹{fmt(fifoPreview.summary.totalCurrentAllocated)}</span>
+                                </div>
+                                {fifoPreview.summary.unallocated > 0 ? (
+                                  <div className="flex justify-between">
+                                    <span className="text-amber-600 dark:text-amber-400">Excess (Advance)</span>
+                                    <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">₹{fmt(fifoPreview.summary.unallocated)}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-500 dark:text-slate-400">Remaining Unallocated</span>
+                                    <span className="font-semibold text-slate-400 dark:text-slate-500 tabular-nums">₹0</span>
+                                  </div>
+                                )}
+                                <div className="col-span-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/40 flex justify-between">
+                                  <span className="text-slate-600 dark:text-slate-300 font-semibold">Total Outstanding After</span>
+                                  <span className={`font-bold tabular-nums ${fifoPreview.summary.totalOutstandingAfter === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                    ₹{fmt(fifoPreview.summary.totalOutstandingAfter)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
