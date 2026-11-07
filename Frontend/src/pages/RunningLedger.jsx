@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Download, Search, X, BookOpen, ArrowDownLeft, ArrowUpRight, DollarSign } from 'lucide-react'
+import { Download, Search, X, BookOpen, ArrowDownLeft, ArrowUpRight, DollarSign, Printer } from 'lucide-react'
 import PrintPreviewModal from '../components/PrintPreviewModal'
+import LedgerPrintModal from '../components/LedgerPrintModal'
 import DropdownSelect from '../components/ui/DropdownSelect'
 import CustomDatePicker from '../components/ui/CustomDatePicker'
 import { toTitleCase } from '../utils/text'
@@ -56,6 +57,7 @@ export function RunningLedger() {
   const [ledger, setLedger] = useState([])
   const [ledgerLoading, setLedgerLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [showPdfModal, setShowPdfModal] = useState(false)
 
   useEffect(() => {
     const partyParam = searchParams.get('party')
@@ -144,7 +146,16 @@ export function RunningLedger() {
       }
     }
     fetchParties()
-    return () => controller.abort()
+
+    const handleDataChanged = () => fetchParties()
+    window.addEventListener('api-data-changed', handleDataChanged)
+    window.addEventListener('vastrams:data-restored', handleDataChanged)
+
+    return () => {
+      controller.abort()
+      window.removeEventListener('api-data-changed', handleDataChanged)
+      window.removeEventListener('vastrams:data-restored', handleDataChanged)
+    }
   }, [])
 
   useEffect(() => {
@@ -294,6 +305,16 @@ export function RunningLedger() {
 
   const selectedPartyName = party ? party.split('|')[2] : ''
 
+  const selectedPartyObj = useMemo(() => {
+    if (!partyId || !partyType) return null
+    if (partyType === 'vendor') {
+      return vendors.find(v => String(v._id) === String(partyId)) || null
+    } else if (partyType === 'financier') {
+      return financiers.find(f => String(f._id) === String(partyId)) || null
+    }
+    return null
+  }, [partyId, partyType, vendors, financiers])
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
       {/* Header */}
@@ -302,14 +323,26 @@ export function RunningLedger() {
         description={selectedPartyName ? `Transaction journal and balance audit for ${toTitleCase(selectedPartyName)}` : "Select an entity to inspect sequential transactions and balance progression"}
         breadcrumbs={[{ label: 'Ledger' }]}
       >
-        <Button
-          variant="outline"
-          onClick={handleExport}
-          disabled={!party || filteredLedger.length === 0}
-        >
-          <Download className="w-4 h-4" />
-          <span>Export Ledger</span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={!party || filteredLedger.length === 0}
+            title="Export Ledger as Excel"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export Excel</span>
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => setShowPdfModal(true)}
+            disabled={!party || filteredLedger.length === 0}
+            title="View, Print and Export Professional Ledger PDF Statement"
+          >
+            <Printer className="w-4 h-4" />
+            <span>PDF Statement</span>
+          </Button>
+        </div>
       </PageHeader>
 
       {/* KPI Stats when party selected */}
@@ -461,6 +494,23 @@ export function RunningLedger() {
           </>
         )}
       </Card>
+
+      {/* Professional Running Ledger Statement PDF & Print Modal */}
+      {showPdfModal && (
+        <LedgerPrintModal
+          isOpen={showPdfModal}
+          onClose={() => setShowPdfModal(false)}
+          partyName={selectedPartyName}
+          partyType={partyType}
+          partyObj={selectedPartyObj}
+          fromDate={fromDate}
+          toDate={toDate}
+          transactions={filteredLedger}
+          totalDebit={totalDebit}
+          totalCredit={totalCredit}
+          finalBalance={finalBalance}
+        />
+      )}
     </div>
   )
 }
