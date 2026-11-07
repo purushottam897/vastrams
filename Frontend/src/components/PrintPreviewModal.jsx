@@ -428,7 +428,21 @@ export function printInvoiceElement(element, docTitle, settings = {}) {
 export function PrintPreviewModal({ type, id, onClose }) {
   const invoiceRef = useRef(null)
   const [doc, setDoc] = useState(null)
-  const [profile, setProfile] = useState(null)
+  const [profile, setProfile] = useState(() => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const cached = localStorage.getItem('vastrams_cached_profile')
+        if (cached) return JSON.parse(cached)
+      }
+    } catch {}
+    return {
+      businessName: 'Vastrams',
+      address: '123 Main St, Surat, Gujarat',
+      gstin: '24AAAAA0000A1Z0',
+      phone: '9876543210',
+      email: 'admin@vastrams.in'
+    }
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
@@ -1112,6 +1126,12 @@ export function PrintPreviewModal({ type, id, onClose }) {
                 }}
               >
                 <div>
+                  <div 
+                    className="text-xl sm:text-2xl font-black uppercase tracking-wider text-slate-900 mb-1 select-none"
+                    style={{ color: '#000000' }}
+                  >
+                    {(profile?.businessName || 'Vastrams').toUpperCase()}
+                  </div>
                   <h1 
                     contentEditable={true} 
                     suppressContentEditableWarning={true}

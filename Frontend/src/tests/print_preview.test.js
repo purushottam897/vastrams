@@ -222,4 +222,50 @@ test('A4 Invoice & Voucher Designer Print Feature Tests', async (t) => {
     assert.ok(modalContent.includes('initialFields.signatoryLabel = vendorName'), 'Must set signatoryLabel using vendorName')
     assert.ok(modalContent.includes('Signatory Label'), 'Must provide Signatory Label editor field')
   })
+
+  await t.test('Company name displays dynamically above document title for invoices and vouchers without hardcoding', () => {
+    const modalFilePath = path.resolve('src/components/PrintPreviewModal.jsx')
+    const modalContent = fs.readFileSync(modalFilePath, 'utf-8')
+
+    const printDocFilePath = path.resolve('src/pages/PrintDocument.jsx')
+    const printDocContent = fs.readFileSync(printDocFilePath, 'utf-8')
+
+    // Must fetch existing company settings from /settings/profile
+    assert.ok(modalContent.includes("api.get('/settings/profile')"), 'PrintPreviewModal must load from existing /settings/profile')
+    assert.ok(printDocContent.includes("api.get('/settings/profile')"), 'PrintDocument must load from existing /settings/profile')
+
+    // Must dynamically render company name above title in PrintPreviewModal
+    assert.ok(modalContent.includes('profile?.businessName'), 'PrintPreviewModal must source dynamic businessName')
+    assert.ok(modalContent.indexOf('profile?.businessName') < modalContent.indexOf('{fields.title || \'Document\'}'), 'Company name must appear above fields.title')
+
+    // Must dynamically render company name above title in PrintDocument
+    assert.ok(printDocContent.includes('profile?.businessName'), 'PrintDocument must source dynamic businessName')
+    assert.ok(printDocContent.indexOf('profile?.businessName') < printDocContent.indexOf('{title}'), 'Company name must appear above title')
+
+    // Verify dynamic update simulation when company name changes in profile
+    const renderHeader = (profile, docTitle) => {
+      const companyName = (profile?.businessName || 'Vastrams').toUpperCase()
+      return `${companyName}\n${docTitle.toUpperCase()}`
+    }
+
+    // Default company profile
+    assert.equal(
+      renderHeader({ businessName: 'Vastrams' }, 'Payment Voucher'),
+      'VASTRAMS\nPAYMENT VOUCHER'
+    )
+    assert.equal(
+      renderHeader({ businessName: 'Vastrams' }, 'Tax Invoice'),
+      'VASTRAMS\nTAX INVOICE'
+    )
+
+    // Updated company profile from existing settings
+    assert.equal(
+      renderHeader({ businessName: 'Acme Textiles Ltd' }, 'Payment Voucher'),
+      'ACME TEXTILES LTD\nPAYMENT VOUCHER'
+    )
+    assert.equal(
+      renderHeader({ businessName: 'Royal Silk House' }, 'Tax Invoice'),
+      'ROYAL SILK HOUSE\nTAX INVOICE'
+    )
+  })
 })

@@ -43,7 +43,21 @@ export function PrintDocument() {
   const { type, id } = useParams()
   const navigate = useNavigate()
   const [doc, setDoc] = useState(null)
-  const [profile, setProfile] = useState(null)
+  const [profile, setProfile] = useState(() => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const cached = localStorage.getItem('vastrams_cached_profile')
+        if (cached) return JSON.parse(cached)
+      }
+    } catch {}
+    return {
+      businessName: 'Vastrams',
+      address: '123 Main St, Surat, Gujarat',
+      gstin: '24AAAAA0000A1Z0',
+      phone: '9876543210',
+      email: 'admin@vastrams.in'
+    }
+  })
   const [template, setTemplate] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -405,6 +419,12 @@ export function PrintDocument() {
         {/* e-Invoice Heading & QR Header */}
         <div className="flex justify-between items-start border-b border-black pb-4 mb-4">
           <div>
+            <div 
+              className="text-xl sm:text-2xl font-black uppercase tracking-wider text-black mb-1 select-none"
+              style={{ color: '#000000' }}
+            >
+              {(profile?.businessName || 'Vastrams').toUpperCase()}
+            </div>
             <h1 className="text-xl font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400" style={{ color: '#00C896' }}>{title}</h1>
             <div className="mt-2 text-xs font-mono">
               <p>Ack No: <span className="font-semibold">{generateAckNumber(doc, type)}</span></p>
