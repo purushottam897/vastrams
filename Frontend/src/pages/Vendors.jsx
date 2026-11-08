@@ -118,7 +118,7 @@ export function Vendors() {
       const normalized = (Array.isArray(data) ? data : []).map(v => ({
         ...v,
         id: v._id || v.id,
-        outstanding: v.outstandingBalance ?? v.outstanding ?? 0
+        outstanding: v.outstandingBalance ?? v.outstanding ?? (Number(v.openingBalance) || 0)
       }))
       fetchDispatch({ type: 'FETCH_SUCCESS', payload: normalized })
     } catch (err) {
@@ -130,6 +130,16 @@ export function Vendors() {
     fetchVendors()
   }, [fetchVendors])
 
+  useEffect(() => {
+    const handleDataChanged = () => fetchVendors()
+    window.addEventListener('api-data-changed', handleDataChanged)
+    window.addEventListener('vastrams:data-restored', handleDataChanged)
+    return () => {
+      window.removeEventListener('api-data-changed', handleDataChanged)
+      window.removeEventListener('vastrams:data-restored', handleDataChanged)
+    }
+  }, [fetchVendors])
+
   const handleOpenAdd = () => {
     setForm(emptyForm)
     setInitialFormSnapshot(emptyForm)
@@ -138,10 +148,23 @@ export function Vendors() {
     setShowModal(true)
   }
 
-  const handleOpenPreview = (vendor) => {
+  const handleOpenPreview = async (vendor) => {
     setSelectedVendor(vendor)
     setModalMode('preview')
     setShowModal(true)
+    try {
+      const vId = vendor.id || vendor._id
+      if (vId) {
+        const fresh = await api.get(`/vendors/${vId}`)
+        if (fresh) {
+          setSelectedVendor(prev => ({
+            ...fresh,
+            id: fresh._id || fresh.id || prev?.id,
+            outstanding: fresh.outstandingBalance ?? fresh.outstanding ?? (Number(fresh.openingBalance) || 0)
+          }))
+        }
+      }
+    } catch {}
   }
 
   const handleOpenEdit = (vendor) => {
@@ -643,7 +666,7 @@ export function Vendors() {
                       </div>
                       <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 rounded-xl border border-rose-200/80 dark:border-rose-900/40">
                         <span className="text-xs text-rose-600 dark:text-rose-400 block mb-1 font-semibold">Current Outstanding</span>
-                        <span className="text-lg font-black text-rose-600 dark:text-rose-400 tabular-nums">₹{fmt(selectedVendor?.outstanding || 0)}</span>
+                        <span className="text-lg font-black text-rose-600 dark:text-rose-400 tabular-nums">₹{fmt(selectedVendor?.outstandingBalance ?? selectedVendor?.outstanding ?? 0)}</span>
                       </div>
                     </div>
                   </div>

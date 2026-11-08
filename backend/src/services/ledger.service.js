@@ -32,6 +32,10 @@ class LedgerService {
       const vendor = await Vendor.findById(vendorId).session(session)
       if (!vendor) throw new Error('Vendor not found')
 
+      if (vendor.outstandingBalance === 0 && (Number(vendor.openingBalance) || 0) > 0) {
+        vendor.outstandingBalance = Number(vendor.openingBalance) || 0
+      }
+
       // Add or subtract depending on transaction type
       if (type === 'BILL_POSTED') {
         vendor.outstandingBalance += amount

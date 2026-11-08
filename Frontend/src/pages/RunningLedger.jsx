@@ -248,9 +248,27 @@ export function RunningLedger() {
     })
   }, [ledger, search, fromDate, toDate])
 
+  const selectedPartyName = party ? party.split('|')[2] : ''
+
+  const selectedPartyObj = useMemo(() => {
+    if (!partyId || !partyType) return null
+    if (partyType === 'vendor') {
+      return vendors.find(v => String(v._id) === String(partyId)) || null
+    } else if (partyType === 'financier') {
+      return financiers.find(f => String(f._id) === String(partyId)) || null
+    }
+    return null
+  }, [partyId, partyType, vendors, financiers])
+
   const totalDebit = useMemo(() => filteredLedger.reduce((s, r) => s + r.debit, 0), [filteredLedger])
   const totalCredit = useMemo(() => filteredLedger.reduce((s, r) => s + r.credit, 0), [filteredLedger])
-  const finalBalance = useMemo(() => filteredLedger.length > 0 ? filteredLedger[filteredLedger.length - 1].balance : 0, [filteredLedger])
+  const finalBalance = useMemo(() => {
+    if (filteredLedger.length > 0) return filteredLedger[filteredLedger.length - 1].balance
+    if (!search && !fromDate && !toDate && selectedPartyObj) {
+      return Number(selectedPartyObj.outstandingBalance ?? selectedPartyObj.outstanding ?? selectedPartyObj.openingBalance ?? 0)
+    }
+    return 0
+  }, [filteredLedger, search, fromDate, toDate, selectedPartyObj])
 
   const handleExport = async () => {
     if (!filteredLedger.length) {
@@ -302,18 +320,6 @@ export function RunningLedger() {
     filterDependencies: [party, fromDate, toDate, search],
     containerRef: tableContainerRef
   })
-
-  const selectedPartyName = party ? party.split('|')[2] : ''
-
-  const selectedPartyObj = useMemo(() => {
-    if (!partyId || !partyType) return null
-    if (partyType === 'vendor') {
-      return vendors.find(v => String(v._id) === String(partyId)) || null
-    } else if (partyType === 'financier') {
-      return financiers.find(f => String(f._id) === String(partyId)) || null
-    }
-    return null
-  }, [partyId, partyType, vendors, financiers])
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
