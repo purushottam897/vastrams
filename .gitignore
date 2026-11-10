@@ -11,6 +11,11 @@ build/
 .env.*.local
 .env*.local
 
+# Python
+.venv/
+__pycache__/
+*.pyc
+
 # Postman
 backend/postman/
 postman/
