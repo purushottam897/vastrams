@@ -149,6 +149,9 @@ export function AuthProvider({ children }) {
       }
       return { success: false, message: 'Invalid server response' }
     } catch (err) {
+      if (err.response?.status === 504 || err.response?.status === 500 || err.response?.data?.lockdown) {
+        return { success: false, lockdown: true, status: err.response?.status || 504 }
+      }
       const errMsg = err.response?.data?.message || err.message || 'Login failed'
       return { success: false, message: errMsg }
     }

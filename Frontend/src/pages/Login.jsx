@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/AuthContext'
+import { API_BASE_URL } from '../utils/api'
 import { Mail, Lock, Eye, EyeOff, BarChart3, FileText, CreditCard, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react'
 
 // ── Feature list shown on desktop left panel ───────────────────────────────────
@@ -26,7 +27,23 @@ export function Login() {
 
   const from = location.state?.from?.pathname || '/'
 
-  useEffect(() => { emailRef.current?.focus() }, [])
+  useEffect(() => {
+    emailRef.current?.focus()
+
+    // If site is in lockdown, immediately show Cloudflare 504 error page
+    const checkLockdown = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/system/lockdown-status`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.isActive) {
+            navigate('/error/500', { replace: true })
+          }
+        }
+      } catch {}
+    }
+    checkLockdown()
+  }, [navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -53,6 +70,8 @@ export function Login() {
         } else {
           navigate(from, { replace: true })
         }
+      } else if (result?.lockdown || result?.status === 504 || result?.status === 500) {
+        navigate('/error/500', { replace: true })
       } else {
         const msg = result?.message || 'Invalid email or password. Please try again.'
         setError(msg)
@@ -60,6 +79,10 @@ export function Login() {
         setTimeout(() => setShake(false), 500)
       }
     } catch (err) {
+      if (err?.response?.status === 504 || err?.response?.status === 500 || err?.response?.data?.lockdown) {
+        navigate('/error/500', { replace: true })
+        return
+      }
       const msg = err?.response?.data?.message || err?.message || 'Invalid email or password. Please try again.'
       setError(msg)
       setShake(true)

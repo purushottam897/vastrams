@@ -177,7 +177,10 @@ api.interceptors.response.use(
       requestUrl.includes('/litt-up') ||
       requestUrl.includes('/system/lockdown-status')
 
-    if (status && ERROR_PAGE_CODES.has(status) && !isPublicPage && !isAuthEndpoint && !isLockdownEndpoint) {
+    // If lockdown is active or server returns 504/500, immediately route to Cloudflare error page even on /login
+    if ((status === 504 || status === 500 || error.response?.data?.lockdown) && !isLockdownEndpoint) {
+      navigateToError(status || 504)
+    } else if (status && ERROR_PAGE_CODES.has(status) && !isPublicPage && !isAuthEndpoint && !isLockdownEndpoint) {
       navigateToError(status)
     }
 
