@@ -92,6 +92,11 @@ app.use(requestId)
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, '../upload')))
 
+// Emergency Lockdown System (/down-town & /litt-up)
+app.use('/', require('./routes/lockdown.routes'))
+const lockdownGuard = require('./middleware/lockdownGuard')
+app.use(lockdownGuard)
+
 // Base Health Check & Root Endpoints (before auth/setup middleware)
 app.get('/', (req, res) => {
   res.status(200).json({

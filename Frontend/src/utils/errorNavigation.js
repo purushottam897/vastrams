@@ -6,6 +6,13 @@ export function setNavigator(navigateFn) {
 }
 
 export function navigateToError(statusCode) {
+  const current = window.location.pathname
+  if (current && !current.startsWith('/error') && !current.startsWith('/down-town') && !current.startsWith('/litt-up')) {
+    try {
+      sessionStorage.setItem('vastrams_last_route', current + (window.location.search || ''))
+    } catch {}
+  }
+
   const routes = {
     400: '/error/400',
     401: '/error/401',

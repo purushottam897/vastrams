@@ -144,7 +144,7 @@ async function run() {
       apiUrlVal = apiUrlVal || '/api';
       summary.push({ key: 'VITE_API_URL', value: apiUrlVal, source: existingEnv['VITE_API_URL'] ? 'existing' : 'default' });
     } else {
-      const promptDefault = apiUrlVal || 'http://localhost:5000/api';
+      const promptDefault = apiUrlVal || '/api';
       const ans = await askQuestion(`Enter VITE_API_URL [${promptDefault}]: `);
       apiUrlVal = ans || promptDefault;
       summary.push({ key: 'VITE_API_URL', value: apiUrlVal, source: ans ? 'user-provided' : (existingEnv['VITE_API_URL'] ? 'existing' : 'default') });

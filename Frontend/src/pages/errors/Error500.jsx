@@ -1,12 +1,120 @@
-import React from 'react'
-import ErrorPage from './ErrorPage'
+import React, { useState, useEffect } from 'react'
+import { CLOUDFLARE_500_HTML } from '../../utils/cloudflareErrorTemplate'
+import { API_BASE_URL } from '../../utils/api'
 
 export default function Error500() {
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLockedDown, setIsLockedDown] = useState(true)
+
+  const redirectToLastRoute = () => {
+    let target = '/'
+    try {
+      const saved = sessionStorage.getItem('vastrams_last_route')
+      if (saved && !saved.startsWith('/error') && !saved.startsWith('/down-town') && !saved.startsWith('/litt-up')) {
+        target = saved
+      }
+      sessionStorage.removeItem('vastrams_last_route')
+    } catch {}
+
+    window.location.replace(target)
+  }
+
+  useEffect(() => {
+    document.title = '504: Catastrophic infrastructure failure'
+    let isMounted = true
+
+    // Immediately verify if lockdown is still active
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/system/lockdown-status`)
+        if (res.ok) {
+          const data = await res.json()
+          // If site was restored via /litt-up, immediately redirect to last route or home!
+          if (data.isActive === false) {
+            redirectToLastRoute()
+            return false
+          }
+        }
+      } catch {
+        // If request fails or server unreachable, lockdown/error remains active
+      }
+      return true
+    }
+
+    // Initial check on page load / reload
+    checkStatus().then((stillLocked) => {
+      if (isMounted && stillLocked) {
+        setIsLockedDown(true)
+        // Show realistic gateway connecting state with circular arc for 2.8s
+        const timer = setTimeout(() => {
+          if (isMounted) setIsLoading(false)
+        }, 2800)
+        return () => clearTimeout(timer)
+      }
+    })
+
+    // Poll periodically so if /litt-up is executed in another tab, this tab auto-redirects
+    const pollInterval = setInterval(async () => {
+      const stillLocked = await checkStatus()
+      if (!stillLocked) {
+        clearInterval(pollInterval)
+      }
+    }, 3500)
+
+    return () => {
+      isMounted = false
+      clearInterval(pollInterval)
+    }
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center select-none font-sans">
+        {/* Animated Circular Arc (Gateway Connecting State) */}
+        <div className="relative w-16 h-16 mb-5">
+          <svg className="w-full h-full animate-spin" viewBox="0 0 50 50">
+            <circle
+              className="text-slate-200"
+              strokeWidth="4"
+              stroke="currentColor"
+              fill="transparent"
+              r="20"
+              cx="25"
+              cy="25"
+            />
+            <circle
+              className="text-slate-500"
+              strokeWidth="4"
+              strokeDasharray="80, 200"
+              strokeDashoffset="0"
+              strokeLinecap="round"
+              stroke="currentColor"
+              fill="transparent"
+              r="20"
+              cx="25"
+              cy="25"
+            />
+          </svg>
+        </div>
+
+        <p className="text-sm font-medium text-slate-600 tracking-tight">
+          Connecting to vastrams.vercel.app...
+        </p>
+        <p className="text-xs text-slate-400 mt-1">
+          Awaiting gateway response
+        </p>
+      </div>
+    )
+  }
+
+  // Pure Cloudflare 504 Page - no floating overlays or toolbars
   return (
-    <ErrorPage
-      code="500"
-      headline="Server Error"
-      subtext="Something went wrong on our end. Please try again later."
-    />
+    <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-white select-none">
+      <iframe
+        title="Catastrophic infrastructure failure"
+        srcDoc={CLOUDFLARE_500_HTML}
+        className="w-full h-full border-none block"
+      />
+    </div>
   )
 }

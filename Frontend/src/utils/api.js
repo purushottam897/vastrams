@@ -163,11 +163,21 @@ api.interceptors.response.use(
       return Promise.reject(new Error('Account setup required.'))
     }
 
-    // Only navigate to dedicated error pages for non-auth endpoints if not already on a public/error page
-    const currentPath = window.location.pathname
-    const isPublicPage = currentPath === '/login' || currentPath === '/setup' || currentPath.startsWith('/error')
+    // Only navigate to dedicated error pages for non-auth endpoints if not already on a public/emergency page
+    const currentPath = window.location.pathname.replace(/\/+$/, '') || '/'
+    const isPublicPage =
+      currentPath === '/login' ||
+      currentPath === '/setup' ||
+      currentPath.startsWith('/error') ||
+      currentPath.startsWith('/down-town') ||
+      currentPath.startsWith('/litt-up')
 
-    if (status && ERROR_PAGE_CODES.has(status) && !isPublicPage && !isAuthEndpoint) {
+    const isLockdownEndpoint =
+      requestUrl.includes('/down-town') ||
+      requestUrl.includes('/litt-up') ||
+      requestUrl.includes('/system/lockdown-status')
+
+    if (status && ERROR_PAGE_CODES.has(status) && !isPublicPage && !isAuthEndpoint && !isLockdownEndpoint) {
       navigateToError(status)
     }
 

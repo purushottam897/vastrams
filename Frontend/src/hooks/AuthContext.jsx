@@ -101,6 +101,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let isMounted = true
     const initAuth = async () => {
+      const path = (window.location.pathname || '').replace(/\/+$/, '')
+      if (path.startsWith('/down-town') || path.startsWith('/litt-up') || path.startsWith('/error')) {
+        if (isMounted) setLoading(false)
+        return
+      }
       const currentToken = getAuthToken()
       if (currentToken) {
         setAuthToken(currentToken, getRefreshToken())

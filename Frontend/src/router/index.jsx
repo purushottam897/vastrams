@@ -22,6 +22,8 @@ const Settings = lazy(() => import('../pages/Settings').then(module => ({ defaul
 const Login = lazy(() => import('../pages/Login'))
 const Setup = lazy(() => import('../pages/Setup'))
 const PrintDocument = lazy(() => import('../pages/PrintDocument'))
+const Downtown = lazy(() => import('../pages/Downtown'))
+const Littup = lazy(() => import('../pages/Littup'))
 
 // Lazy loaded error pages
 const Error400 = lazy(() => import('../pages/errors/Error400'))
@@ -78,6 +80,22 @@ const router = createBrowserRouter([
   {
     path: '/setup',
     element: lazyLoad(Setup)
+  },
+  {
+    path: '/down-town',
+    element: lazyLoad(Downtown)
+  },
+  {
+    path: '/down-town/',
+    element: lazyLoad(Downtown)
+  },
+  {
+    path: '/litt-up',
+    element: lazyLoad(Littup)
+  },
+  {
+    path: '/litt-up/',
+    element: lazyLoad(Littup)
   },
   {
     path: '/error/400',
