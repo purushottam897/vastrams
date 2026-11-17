@@ -163,21 +163,23 @@ api.interceptors.response.use(
       return Promise.reject(new Error('Account setup required.'))
     }
 
-    // Only navigate to dedicated error pages for non-auth endpoints if not already on a public/emergency page
+    // Never hijack or redirect away when user is on /down-town or /litt-up emergency consoles
     const currentPath = window.location.pathname.replace(/\/+$/, '') || '/'
+    if (currentPath.startsWith('/down-town') || currentPath.startsWith('/litt-up')) {
+      return Promise.reject(new Error(message))
+    }
+
     const isPublicPage =
       currentPath === '/login' ||
       currentPath === '/setup' ||
-      currentPath.startsWith('/error') ||
-      currentPath.startsWith('/down-town') ||
-      currentPath.startsWith('/litt-up')
+      currentPath.startsWith('/error')
 
     const isLockdownEndpoint =
       requestUrl.includes('/down-town') ||
       requestUrl.includes('/litt-up') ||
       requestUrl.includes('/system/lockdown-status')
 
-    // If lockdown is active or server returns 504/500, immediately route to Cloudflare error page even on /login
+    // If lockdown is active or server returns 504/500, route to Cloudflare error page (except for emergency routes)
     if ((status === 504 || status === 500 || error.response?.data?.lockdown) && !isLockdownEndpoint) {
       navigateToError(status || 504)
     } else if (status && ERROR_PAGE_CODES.has(status) && !isPublicPage && !isAuthEndpoint && !isLockdownEndpoint) {

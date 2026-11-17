@@ -1,12 +1,23 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { CLOUDFLARE_500_HTML } from '../../utils/cloudflareErrorTemplate'
 import { API_BASE_URL } from '../../utils/api'
 
 export default function Error500() {
+  const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(true)
-  const [isLockedDown, setIsLockedDown] = useState(true)
+  const wasLockedRef = useRef(null)
 
-  const redirectToLastRoute = () => {
+  const safeRedirect = () => {
+    // Loop guard: prevent redirecting more than once every 15 seconds
+    const now = Date.now()
+    const lastRedirect = Number(sessionStorage.getItem('vastrams_last_error_redirect') || 0)
+    if (now - lastRedirect < 15000) {
+      return
+    }
+
+    sessionStorage.setItem('vastrams_last_error_redirect', String(now))
+
     let target = '/'
     try {
       const saved = sessionStorage.getItem('vastrams_last_route')
@@ -16,56 +27,62 @@ export default function Error500() {
       sessionStorage.removeItem('vastrams_last_route')
     } catch {}
 
-    window.location.replace(target)
+    navigate(target, { replace: true })
   }
 
   useEffect(() => {
     document.title = '504: Catastrophic infrastructure failure'
     let isMounted = true
 
-    // Immediately verify if lockdown is still active
+    // Show realistic connecting arc for 2.5s before displaying Cloudflare 504 page
+    const timer = setTimeout(() => {
+      if (isMounted) setIsLoading(false)
+    }, 2500)
+
+    // Check status: only redirect if we observed an active lockdown that is now lifted!
     const checkStatus = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/system/lockdown-status`)
         if (res.ok) {
           const data = await res.json()
-          // If site was restored via /litt-up, immediately redirect to last route or home!
-          if (data.isActive === false) {
-            redirectToLastRoute()
-            return false
+          const currentlyActive = !!data.isActive
+
+          // If we had recorded that the site was actively locked down and now it's lifted:
+          if (wasLockedRef.current === true && !currentlyActive) {
+            wasLockedRef.current = false
+            safeRedirect()
+            return
+          }
+
+          // Initial record of state
+          if (wasLockedRef.current === null) {
+            wasLockedRef.current = currentlyActive
+            // If the user refreshed the tab and there was a pending return route from before lockdown:
+            const savedRoute = sessionStorage.getItem('vastrams_last_route')
+            if (!currentlyActive && savedRoute && !savedRoute.startsWith('/error')) {
+              safeRedirect()
+              return
+            }
           }
         }
       } catch {
-        // If request fails or server unreachable, lockdown/error remains active
+        // Backend unreachable or in gateway timeout
       }
-      return true
     }
 
-    // Initial check on page load / reload
-    checkStatus().then((stillLocked) => {
-      if (isMounted && stillLocked) {
-        setIsLockedDown(true)
-        // Show realistic gateway connecting state with circular arc for 2.8s
-        const timer = setTimeout(() => {
-          if (isMounted) setIsLoading(false)
-        }, 2800)
-        return () => clearTimeout(timer)
-      }
-    })
+    checkStatus()
 
-    // Poll periodically so if /litt-up is executed in another tab, this tab auto-redirects
-    const pollInterval = setInterval(async () => {
-      const stillLocked = await checkStatus()
-      if (!stillLocked) {
-        clearInterval(pollInterval)
-      }
-    }, 3500)
+    // Periodically poll (every 6 seconds): auto-restore if /litt-up unlocked the site
+    const pollInterval = setInterval(() => {
+      if (isMounted) checkStatus()
+    }, 6000)
 
     return () => {
       isMounted = false
+      clearTimeout(timer)
       clearInterval(pollInterval)
     }
-  }, [])
+  }, [navigate])
 
   if (isLoading) {
     return (
