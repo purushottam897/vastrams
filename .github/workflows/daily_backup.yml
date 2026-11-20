@@ -1,0 +1,54 @@
+name: Daily Database Backup & Archive
+
+on:
+  schedule:
+    # 12:30 UTC == 18:00 IST (6:00 PM IST) every day
+    - cron: '30 12 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (generate and verify backups without emailing)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  daily-database-backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv pymongo dnspython openpyxl
+
+      - name: Execute Daily Database Backup
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          REPORT_TO: ${{ secrets.REPORT_TO }}
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python database_backup.py --dry-run
+          else
+            python database_backup.py
+          fi
+
+      - name: Store Backup Artifacts (90-day retention)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vastrams-database-backups-${{ github.run_id }}
+          path: backups/
+          retention-days: 90

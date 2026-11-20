@@ -43,3 +43,9 @@ Thumbs.db
 .review/
 scratch/
 
+
+# Database Backups & Dumps
+backups/
+*.xlsx
+*.tar.gz
+*.bson
