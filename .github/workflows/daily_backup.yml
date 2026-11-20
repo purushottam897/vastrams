@@ -2,8 +2,8 @@ name: Daily Database Backup & Archive
 
 on:
   schedule:
-    # 12:30 UTC == 18:00 IST (6:00 PM IST) every day
-    - cron: '30 12 * * *'
+    # 14:00 UTC == 19:30 IST (7:30 PM IST) every day
+    - cron: '0 14 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
