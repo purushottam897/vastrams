@@ -84,25 +84,55 @@ if not os.getenv("MONGO_URI") and backend_env.exists():
 # ---------------------------------------------------------------------------
 # Configuration Helpers
 # ---------------------------------------------------------------------------
-def load_config() -> dict[str, Any]:
-    """Load and validate required environment variables securely."""
-    gmail_address = (os.getenv("GMAIL_ADDRESS") or "").strip()
-    gmail_app_password = (os.getenv("GMAIL_APP_PASSWORD") or "").strip().replace(" ", "")
-    report_to_raw = os.getenv("REPORT_TO", "").strip()
-    mongo_uri = (os.getenv("MONGO_URI") or "").strip()
+def load_config(require_email: bool = True) -> dict[str, Any]:
+    """Load and validate required environment variables securely across local and CI environments."""
+    gmail_address = (
+        os.getenv("GMAIL_ADDRESS")
+        or os.getenv("GMAIL_USER")
+        or os.getenv("SMTP_USER")
+        or ""
+    ).strip()
 
-    if not gmail_address:
-        raise ValueError("GMAIL_ADDRESS missing in environment (.env).")
-    if not gmail_app_password:
-        raise ValueError("GMAIL_APP_PASSWORD missing in environment (.env).")
-    if not report_to_raw:
-        raise ValueError("REPORT_TO missing in environment (.env).")
+    gmail_app_password = (
+        os.getenv("GMAIL_APP_PASSWORD")
+        or os.getenv("GMAIL_PASSWORD")
+        or os.getenv("SMTP_PASS")
+        or ""
+    ).strip().replace(" ", "")
+
+    report_to_raw = (
+        os.getenv("REPORT_TO")
+        or os.getenv("REPORT_RECIPIENT")
+        or gmail_address
+        or ""
+    ).strip()
+
+    mongo_uri = (
+        os.getenv("MONGO_URI")
+        or os.getenv("MONGODB_URI")
+        or os.getenv("DATABASE_URL")
+        or ""
+    ).strip()
+
+    missing: list[str] = []
     if not mongo_uri:
-        raise ValueError("MONGO_URI missing in environment (.env or backend/.env).")
+        missing.append("MONGO_URI (or MONGODB_URI / DATABASE_URL)")
 
-    recipients = [addr.strip() for addr in report_to_raw.split(",") if addr.strip()]
-    if not recipients:
-        raise ValueError("No valid recipient addresses in REPORT_TO.")
+    if require_email:
+        if not gmail_address:
+            missing.append("GMAIL_ADDRESS (or GMAIL_USER / SMTP_USER)")
+        if not gmail_app_password:
+            missing.append("GMAIL_APP_PASSWORD (or GMAIL_PASSWORD / SMTP_PASS)")
+        if not report_to_raw:
+            missing.append("REPORT_TO (or REPORT_RECIPIENT / GMAIL_ADDRESS)")
+
+    if missing:
+        raise ValueError(
+            f"Configuration error: Missing required setting(s): {', '.join(missing)}. "
+            "In GitHub Actions, configure these in Repository Settings -> Secrets and variables -> Actions."
+        )
+
+    recipients = [addr.strip() for addr in report_to_raw.split(",") if addr.strip()] if report_to_raw else []
 
     return {
         "gmail_address": gmail_address,
@@ -783,9 +813,10 @@ def run_backup(dry_run: bool = False, no_email: bool = False, output_dir: Path |
     logger.info("=" * 60)
 
     try:
-        cfg = load_config()
+        # Load configuration (checks DB URI; email credentials checked based on mode)
+        cfg = load_config(require_email=not (dry_run or no_email))
     except Exception as exc:
-        logger.error("Configuration error: %s", exc)
+        logger.error("%s", exc)
         return 1
 
     try:
@@ -806,7 +837,7 @@ def run_backup(dry_run: bool = False, no_email: bool = False, output_dir: Path |
         archive_bytes, archive_filename, _ = generate_mongodb_restore_archive(db, backup_dt)
         logger.info("Generated MongoDB restore archive: %s (%d bytes)", archive_filename, len(archive_bytes))
 
-        # Step 3: Verification
+        # Step 3: Verification of both generated backups
         logger.info("Verifying Excel workbook integrity...")
         if not verify_excel_backup(excel_bytes, db_counts):
             raise RuntimeError("Excel backup integrity verification failed! Record counts mismatch.")
@@ -824,7 +855,18 @@ def run_backup(dry_run: bool = False, no_email: bool = False, output_dir: Path |
         archive_path.write_bytes(archive_bytes)
         logger.info("Saved local backup copies to: %s and %s", excel_path, archive_path)
 
-        # Step 5: Build Email Content
+        if dry_run or no_email:
+            logger.info("DRY-RUN or NO-EMAIL enabled. Backup created and verified successfully. Email NOT sent.")
+            return 0
+
+        # Step 5: Verify email configuration before sending
+        if not cfg.get("gmail_address") or not cfg.get("gmail_app_password") or not cfg.get("report_to"):
+            raise ValueError(
+                "Cannot send email: Email credentials missing in environment. "
+                "Ensure GMAIL_ADDRESS and GMAIL_APP_PASSWORD are set in GitHub Secrets."
+            )
+
+        # Step 6: Build Email Content
         text_body, html_body = build_backup_email_content(
             backup_dt=backup_dt,
             db_name=db.name,
@@ -837,11 +879,7 @@ def run_backup(dry_run: bool = False, no_email: bool = False, output_dir: Path |
 
         subject = f"Vastrams — Daily Database Backup [{backup_dt.strftime('%Y-%m-%d')}] — 100% Verified"
 
-        if dry_run or no_email:
-            logger.info("DRY-RUN or NO-EMAIL enabled. Backup created and verified successfully. Email NOT sent.")
-            return 0
-
-        # Step 6: Send Email with both attachments
+        # Step 7: Send Email with both attachments
         attachments = [
             (excel_filename, excel_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
             (archive_filename, archive_bytes, "application/gzip"),

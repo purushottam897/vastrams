@@ -32,12 +32,41 @@ jobs:
           python -m pip install --upgrade pip
           pip install python-dotenv pymongo dnspython openpyxl
 
+      - name: Preflight Secrets & Configuration Check
+        run: |
+          python -c '
+          import os, sys
+          missing = []
+          if not (os.getenv("MONGO_URI") or os.getenv("MONGODB_URI") or os.getenv("DATABASE_URL")):
+              missing.append("MONGO_URI (or MONGODB_URI / DATABASE_URL)")
+          if not (os.getenv("GMAIL_ADDRESS") or os.getenv("GMAIL_USER") or os.getenv("SMTP_USER")):
+              missing.append("GMAIL_ADDRESS (or GMAIL_USER / SMTP_USER)")
+          if not (os.getenv("GMAIL_APP_PASSWORD") or os.getenv("GMAIL_PASSWORD") or os.getenv("SMTP_PASS")):
+              missing.append("GMAIL_APP_PASSWORD (or GMAIL_PASSWORD / SMTP_PASS)")
+
+          if missing:
+              print("::error title=Missing GitHub Repository Secrets::The following required GitHub Actions secrets are missing:")
+              for s in missing:
+                  print(f"  ❌ {s}")
+              print("\nPlease configure the missing secret(s) in GitHub Repository Settings:")
+              print("  1. Go to repository: https://github.com/purushottam897/vastrams")
+              print("  2. Click Settings -> Secrets and variables -> Actions")
+              print("  3. Click \"New repository secret\" and add each required secret.")
+              sys.exit(1)
+          print("✓ Preflight check passed: All required secret environment variables are configured.")
+          '
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS || secrets.GMAIL_USER || secrets.SMTP_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD || secrets.GMAIL_PASSWORD || secrets.SMTP_PASS }}
+          REPORT_TO: ${{ secrets.REPORT_TO || secrets.REPORT_RECIPIENT || secrets.GMAIL_ADDRESS || secrets.GMAIL_USER }}
+          MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI || secrets.DATABASE_URL }}
+
       - name: Execute Daily Database Backup
         env:
-          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          REPORT_TO: ${{ secrets.REPORT_TO }}
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS || secrets.GMAIL_USER || secrets.SMTP_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD || secrets.GMAIL_PASSWORD || secrets.SMTP_PASS }}
+          REPORT_TO: ${{ secrets.REPORT_TO || secrets.REPORT_RECIPIENT || secrets.GMAIL_ADDRESS || secrets.GMAIL_USER }}
+          MONGO_URI: ${{ secrets.MONGO_URI || secrets.MONGODB_URI || secrets.DATABASE_URL }}
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             python database_backup.py --dry-run

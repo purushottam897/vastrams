@@ -125,12 +125,12 @@ def run_all_tests() -> int:
     # TEST 8: Confirm Schedules Use India Standard Time (IST)
     # -----------------------------------------------------------------------
     print("[TEST 8] Confirming Timezone & Cron Timing...")
-    # Daily backup at 18:00 IST = 12:30 UTC -> cron '30 12 * * *'
+    # Daily backup at 19:30 IST = 14:00 UTC -> cron '0 14 * * *'
     # Weekly report on Sunday at 18:30 IST = 13:00 UTC -> cron '0 13 * * 0'
-    backup_cron_ok = "30 12 * * *" in daily_backup_yml.read_text(encoding="utf-8")
+    backup_cron_ok = "0 14 * * *" in daily_backup_yml.read_text(encoding="utf-8")
     weekly_cron_ok = "0 13 * * 0" in weekly_report_yml.read_text(encoding="utf-8")
     test8_pass = backup_cron_ok and weekly_cron_ok
-    results.append((8, "Cron schedules mapped to India Standard Time (18:00 & 18:30 IST)", test8_pass, "12:30 UTC & 13:00 UTC"))
+    results.append((8, "Cron schedules mapped to India Standard Time (19:30 & 18:30 IST)", test8_pass, "14:00 UTC & 13:00 UTC"))
 
     # -----------------------------------------------------------------------
     # TEST 9: Failure Handling (MongoDB & SMTP)
