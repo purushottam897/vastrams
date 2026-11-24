@@ -565,6 +565,14 @@ export function FinancierPayments() {
 
                   <div className="flex items-center justify-end gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
                     <button
+                      onClick={() => setPrintDoc({ type: 'repayment', id: r.id || r._id })}
+                      className="h-9 px-3 rounded-lg text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors"
+                      title="Print Repayment Voucher"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Print</span>
+                    </button>
+                    <button
                       onClick={() => handleOpenPreview(r)}
                       className="h-9 px-3 rounded-lg text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors"
                       title="View Details"
@@ -637,6 +645,13 @@ export function FinancierPayments() {
                       <td className="px-6 py-4 text-slate-500 dark:text-slate-400 max-w-[240px] truncate">{r.remarks || '—'}</td>
                       <td className="px-6 py-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => setPrintDoc({ type: 'repayment', id: r.id || r._id })}
+                            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                            title="Print Repayment Voucher"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => handleOpenPreview(r)}
                             className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -825,7 +840,21 @@ export function FinancierPayments() {
               {/* Footer */}
               <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3 bg-slate-50/50 dark:bg-slate-800/80">
                 {modalMode === 'preview' ? (
-                  <Button variant="secondary" onClick={() => setShowModal(false)}>Close</Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        const repayId = selectedRepay?.id || selectedRepay?._id
+                        setShowModal(false)
+                        setPrintDoc({ type: 'repayment', id: repayId })
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <Printer className="w-4 h-4" />
+                      Print Document
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowModal(false)}>Close</Button>
+                  </div>
                 ) : (
                   <>
                     <Button variant="secondary" onClick={closeModal}>Cancel</Button>
@@ -841,6 +870,14 @@ export function FinancierPayments() {
       </AnimatePresence>
 
       <SaveConfirmationModal {...confirmConfig} isSaving={isSaving} />
+
+      {printDoc && (
+        <PrintPreviewModal
+          type={printDoc.type}
+          id={printDoc.id}
+          onClose={() => setPrintDoc(null)}
+        />
+      )}
     </div>
   )
 }

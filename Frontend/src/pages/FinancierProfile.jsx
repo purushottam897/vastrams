@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Edit2, Plus, ArrowLeft, Building2, X, Landmark, DollarSign, CheckCircle2, Clock, Printer } from 'lucide-react'
+import PrintPreviewModal from '../components/PrintPreviewModal'
 import { toInputDate, fromInputDate, getTodayFormatted } from '../utils/date'
 import DropdownSelect from '../components/ui/DropdownSelect'
 import CustomDatePicker from '../components/ui/CustomDatePicker'
@@ -31,6 +32,7 @@ export function FinancierProfile() {
   const [loading, setLoading] = useState(true)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [error, setError] = useState(null)
+  const [printDoc, setPrintDoc] = useState(null)
 
   // Modals state
   const [showEditModal, setShowEditModal] = useState(false)
@@ -464,6 +466,14 @@ export function FinancierProfile() {
 
                     <div className="flex items-center justify-between text-xs text-slate-500">
                       <span>Drawdown: <span className="font-medium text-slate-700 dark:text-slate-300">{l.date}</span></span>
+                      <button
+                        onClick={() => setPrintDoc({ type: 'loan', id: l.id })}
+                        className="h-7 px-2.5 rounded-lg text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors"
+                        title="Print Loan Voucher"
+                      >
+                        <Printer className="w-3 h-3" />
+                        <span>Print</span>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -480,6 +490,7 @@ export function FinancierProfile() {
                       <th className="px-6 py-3.5 text-right">Principal Paid</th>
                       <th className="px-6 py-3.5 text-right">Outstanding</th>
                       <th className="px-6 py-3.5">Status</th>
+                      <th className="px-6 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
@@ -496,6 +507,16 @@ export function FinancierProfile() {
                           <Badge variant={String(l.status).toLowerCase() === 'active' ? 'warning' : 'success'} dot>
                             {toTitleCase(l.status)}
                           </Badge>
+                        </td>
+                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <button
+                            onClick={() => setPrintDoc({ type: 'loan', id: l.id })}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors inline-flex items-center gap-1 text-xs"
+                            title="Print Loan Voucher"
+                          >
+                            <Printer className="w-4 h-4" />
+                            <span className="hidden sm:inline">Print</span>
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -779,6 +800,14 @@ export function FinancierProfile() {
           </div>
         )}
       </AnimatePresence>
+
+      {printDoc && (
+        <PrintPreviewModal
+          type={printDoc.type}
+          id={printDoc.id}
+          onClose={() => setPrintDoc(null)}
+        />
+      )}
     </div>
   )
 }

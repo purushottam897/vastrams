@@ -1,6 +1,7 @@
 /**
  * Finance Section PDF Generation and Direct Download Utility
- * Produces executive-grade, well-formatted A4 PDF reports for:
+ * Produces executive-grade, well-formatted A4 PDF documents styled
+ * to match the Purchases Tax Invoice & Voucher design (PrintPreviewModal):
  * 1. Finance Summary / Financiers List (Financiers.jsx)
  * 2. Financier Profile & Loan Facility Statement (FinancierProfile.jsx)
  * 3. Loans & Credit Facilities Register (Loans.jsx)
@@ -48,15 +49,92 @@ export const getFormattedTimestamp = () => {
 }
 
 /**
- * Builds printable HTML document for Finance Summary / Financiers List
+ * Converts numbers into English words formatted for Indian Rupees
+ */
+export function numberToWords(num) {
+  if (num === null || num === undefined || isNaN(num)) return 'Indian Rupee Zero Only'
+  const val = Number(num)
+  if (val === 0) return 'Indian Rupee Zero Only'
+  const rupees = Math.floor(Math.abs(val))
+  const paise = Math.round((Math.abs(val) - rupees) * 100)
+
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen ']
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+
+  function convert(n) {
+    if (n.toString().length > 9) return 'overflow'
+    let match = ('000000000' + n).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/)
+    if (!match) return ''
+    let str = ''
+    str += match[1] != 0 ? (a[Number(match[1])] || b[match[1][0]] + ' ' + a[match[1][1]]) + 'Crore ' : ''
+    str += match[2] != 0 ? (a[Number(match[2])] || b[match[2][0]] + ' ' + a[match[2][1]]) + 'Lakh ' : ''
+    str += match[3] != 0 ? (a[Number(match[3])] || b[match[3][0]] + ' ' + a[match[3][1]]) + 'Thousand ' : ''
+    str += match[4] != 0 ? (a[Number(match[4])] || b[match[4][0]] + ' ' + a[match[4][1]]) + 'Hundred ' : ''
+    str += match[5] != 0 ? ((str !== '') ? 'and ' : '') + (a[Number(match[5])] || b[match[5][0]] + ' ' + a[match[5][1]]) : ''
+    return str.trim()
+  }
+
+  let rupeeWords = convert(rupees)
+  let result = rupeeWords ? `Indian Rupee ${rupeeWords}` : 'Indian Rupee Zero'
+  if (paise > 0) {
+    let paiseWords = convert(paise)
+    result += ` and ${paiseWords} Paise`
+  }
+  result += ' Only'
+  return result
+}
+
+/**
+ * Standard Ack Number generator matching Purchases
+ */
+export function getAckNo(tag = 'FIN') {
+  const d = new Date()
+  const yyyymm = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`
+  return `${yyyymm}-${tag.toUpperCase()}-001`
+}
+
+/**
+ * Standard QR code vector matching Purchases e-Invoice
+ */
+const QR_SVG = `
+  <svg width="60" height="60" viewBox="0 0 100 100" style="display:block;">
+    <rect width="100" height="100" fill="#ffffff"/>
+    <rect x="8" y="8" width="28" height="28" fill="#000000"/>
+    <rect x="14" y="14" width="16" height="16" fill="#ffffff"/>
+    <rect x="18" y="18" width="8" height="8" fill="#000000"/>
+    <rect x="64" y="8" width="28" height="28" fill="#000000"/>
+    <rect x="70" y="14" width="16" height="16" fill="#ffffff"/>
+    <rect x="74" y="18" width="8" height="8" fill="#000000"/>
+    <rect x="8" y="64" width="28" height="28" fill="#000000"/>
+    <rect x="14" y="70" width="16" height="16" fill="#ffffff"/>
+    <rect x="18" y="74" width="8" height="8" fill="#000000"/>
+    <rect x="42" y="12" width="14" height="6" fill="#000000"/>
+    <rect x="42" y="24" width="8" height="12" fill="#000000"/>
+    <rect x="42" y="42" width="16" height="16" fill="#000000"/>
+    <rect x="64" y="42" width="12" height="8" fill="#000000"/>
+    <rect x="80" y="42" width="12" height="14" fill="#000000"/>
+    <rect x="42" y="64" width="14" height="14" fill="#000000"/>
+    <rect x="62" y="64" width="14" height="8" fill="#000000"/>
+    <rect x="62" y="76" width="8" height="16" fill="#000000"/>
+    <rect x="76" y="74" width="16" height="18" fill="#000000"/>
+  </svg>
+`
+
+/**
+ * Builds Purchases-style box-bordered HTML document for Finance Summary / Financiers List
  */
 export function buildFinanceSummaryHtml({ financiers = [], companyProfile = {}, search = '', statusFilter = 'ALL' }) {
   const compName = companyProfile.businessName || 'Vastrams'
-  const compPhone = companyProfile.phone || ''
-  const compEmail = companyProfile.email || ''
-  const compAddress = companyProfile.address || ''
-  const compGstin = companyProfile.gstin || ''
+  const compAddress = companyProfile.address || '123 Main St, Surat, Gujarat'
+  const compGstin = companyProfile.gstin || '24AAAAA0000A1Z0'
+  const compState = (compGstin || '24').substring(0, 2)
+  const bankName = companyProfile.bankName || 'HDFC Bank'
+  const bankAccount = companyProfile.bankAccount || '50200012345678'
+  const bankIFSC = companyProfile.bankIFSC || 'HDFC0001234'
+
+  const generatedDate = getTodayDateString()
   const generatedAt = getFormattedTimestamp()
+  const ackNo = getAckNo('FIN')
 
   const totalFinanciers = financiers.length
   const totalActiveLoans = financiers.reduce((s, f) => s + (f.loansCount || 0), 0)
@@ -70,112 +148,169 @@ export function buildFinanceSummaryHtml({ financiers = [], companyProfile = {}, 
   const rowsHtml = financiers.map((f, idx) => {
     const rateStr = f.defaultInterestRate !== null && f.defaultInterestRate !== undefined ? `${f.defaultInterestRate}% p.a.` : '—'
     const outBal = f.outstanding || f.outstandingBalance || 0
-    const statusColor = String(f.status).toLowerCase() === 'active' ? '#047857' : '#b91c1c'
-    const statusBg = String(f.status).toLowerCase() === 'active' ? '#d1fae5' : '#fee2e2'
-    const isEven = idx % 2 === 1
 
     return `
-      <tr style="background-color: ${isEven ? '#f8fafc' : '#ffffff'}; border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 9px 8px; text-align: center; color: #64748b; font-size: 11px;">${idx + 1}</td>
-        <td style="padding: 9px 10px; font-weight: 700; color: #0f172a; font-size: 12px;">${f.name || '—'}</td>
-        <td style="padding: 9px 10px; color: #334155; font-size: 11px;">${f.phone || '—'}</td>
-        <td style="padding: 9px 10px; color: #64748b; font-size: 11px; max-width: 140px; word-break: break-word;">${f.address || '—'}</td>
-        <td style="padding: 9px 10px; text-align: center; color: #475569; font-size: 11px;">${rateStr}</td>
-        <td style="padding: 9px 10px; text-align: center; font-weight: 600; color: #0f172a; font-size: 11px;">${f.loansCount || 0}</td>
-        <td style="padding: 9px 10px; text-align: right; font-weight: 700; color: ${outBal > 0 ? '#b91c1c' : '#047857'}; font-size: 12px; font-family: monospace;">${fmtCurrency(outBal)}</td>
-        <td style="padding: 9px 8px; text-align: center;">
-          <span style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 700; background-color: ${statusBg}; color: ${statusColor};">${f.status || 'Active'}</span>
+      <tr style="border-bottom: 1px solid #000000;">
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 11px;">${idx + 1}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-weight: 700; color: #000000; font-size: 11px;">
+          ${f.name || '—'}
+          ${f.phone ? `<div style="font-size: 9px; font-weight: normal; color: #475569;">Ph: ${f.phone}</div>` : ''}
         </td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; color: #334155; font-size: 10px; max-width: 160px; word-break: break-word;">${f.address || '—'}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; color: #000000; font-size: 11px;">${rateStr}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-weight: 700; color: #000000; font-size: 11px;">${f.loansCount || 0}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 10px; font-weight: 700;">${f.status || 'Active'}</td>
+        <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #000000; font-size: 11px; font-family: monospace;">${fmtCurrency(outBal)}</td>
       </tr>
     `
   }).join('')
 
   return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; background: #ffffff; padding: 32px 36px; width: 800px; box-sizing: border-box; line-height: 1.4;">
-      <!-- Header -->
-      <div style="border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #000000; background: #ffffff; padding: 16px 20px; width: 800px; box-sizing: border-box; line-height: 1.35; border: 2px solid #000000;">
+      
+      <!-- Top Title Box with e-Invoice QR (Purchases Layout) -->
+      <div style="border: 1px solid #000000; background: #f8fafc; padding: 12px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <h1 style="margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; color: #0f172a; text-transform: uppercase;">${compName}</h1>
-          <p style="margin: 2px 0 0 0; font-size: 11px; font-weight: 600; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px;">Vendor & Finance Management System</p>
-          ${compAddress ? `<p style="margin: 4px 0 0 0; font-size: 11px; color: #475569;">${compAddress}</p>` : ''}
-          <div style="margin-top: 4px; font-size: 10px; color: #64748b; display: flex; gap: 12px;">
-            ${compPhone ? `<span>Phone: ${compPhone}</span>` : ''}
-            ${compEmail ? `<span>Email: ${compEmail}</span>` : ''}
-            ${compGstin ? `<span>GSTIN: ${compGstin}</span>` : ''}
+          <div style="font-size: 20px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #000000; margin-bottom: 2px;">
+            ${compName.toUpperCase()}
+          </div>
+          <div style="font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; margin-bottom: 6px;">
+            FINANCE STATEMENT
+          </div>
+          <div style="font-size: 11px; font-family: monospace; color: #000000;">
+            <p style="margin: 0;"><strong>Ack No:</strong> <span style="color: #334155;">${ackNo}</span></p>
+            <p style="margin: 2px 0 0 0;"><strong>Ack Date:</strong> <span style="color: #334155;">${generatedDate}</span></p>
           </div>
         </div>
-        <div style="text-align: right;">
-          <div style="display: inline-block; background: #4f46e5; color: #ffffff; padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">Finance Statement</div>
-          <p style="margin: 8px 0 0 0; font-size: 10px; color: #64748b;">Generated: <strong style="color: #0f172a;">${generatedAt}</strong></p>
-          <p style="margin: 2px 0 0 0; font-size: 10px; color: #64748b;">Scope: <strong style="color: #0f172a;">${filterText}</strong></p>
+        <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+          <span style="font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #475569; margin-bottom: 4px;">e-Invoice / Verified</span>
+          <div style="width: 64px; height: 64px; border: 1px solid #000000; padding: 2px; background: #ffffff; display: flex; align-items: center; justify-content: center;">
+            ${QR_SVG}
+          </div>
         </div>
       </div>
 
-      <!-- Summary KPI Metric Cards -->
-      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
-        <div style="flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #f8fafc;">
-          <span style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Total Financiers</span>
-          <p style="margin: 4px 0 0 0; font-size: 20px; font-weight: 800; color: #0f172a;">${totalFinanciers}</p>
+      <!-- Dual-Column Header Box: Recipient (Bill To) & Supplier (From) -->
+      <div style="border: 1px solid #000000; margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr;">
+        <!-- Left: Recipient Details -->
+        <div style="border-right: 1px solid #000000; padding: 10px 12px; font-size: 11px;">
+          <h2 style="margin: 0 0 4px 0; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Recipient (Bill To / Counterparty)</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #000000;">All Registered Financiers (${totalFinanciers})</p>
+          <p style="margin: 2px 0 0 0; color: #334155;">Scope: ${filterText}</p>
+          <p style="margin: 4px 0 0 0; font-family: monospace;"><strong>Active Facilities:</strong> ${totalActiveLoans}</p>
+          <p style="margin: 2px 0 0 0;"><strong>State Code:</strong> ${compState}</p>
         </div>
-        <div style="flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #f8fafc;">
-          <span style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Active Loan Facilities</span>
-          <p style="margin: 4px 0 0 0; font-size: 20px; font-weight: 800; color: #4f46e5;">${totalActiveLoans}</p>
-        </div>
-        <div style="flex: 1.2; border: 1px solid #fecdd3; border-radius: 10px; padding: 12px 14px; background: #fff1f2;">
-          <span style="font-size: 10px; font-weight: 700; color: #9f1239; text-transform: uppercase; letter-spacing: 0.5px;">Total Outstanding Exposure</span>
-          <p style="margin: 4px 0 0 0; font-size: 20px; font-weight: 800; color: #be123c; font-family: monospace;">${fmtCurrency(totalOutstanding)}</p>
+
+        <!-- Right: Supplier (From) Details -->
+        <div style="padding: 10px 12px; font-size: 11px;">
+          <h2 style="margin: 0 0 4px 0; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Supplier (From / Issuer)</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #000000;">${compName}</p>
+          <p style="margin: 2px 0 0 0; color: #334155;">${compAddress}</p>
+          <p style="margin: 4px 0 0 0; font-family: monospace;"><strong>GSTIN/UIN:</strong> ${compGstin}</p>
+          <p style="margin: 2px 0 0 0;"><strong>State Code:</strong> ${compState}</p>
         </div>
       </div>
 
-      <!-- Main Data Table -->
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; border: 1px solid #cbd5e1; font-size: 11px;">
+      <!-- 4-Column Document Metadata Grid -->
+      <div style="border: 1px solid #000000; margin-bottom: 12px; display: grid; grid-template-columns: repeat(4, 1fr);">
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Document No.</div>
+          <div style="font-size: 12px; font-weight: 800; font-family: monospace; color: #000000; margin-top: 1px;">${ackNo}</div>
+        </div>
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Dated</div>
+          <div style="font-size: 12px; font-weight: 800; color: #000000; margin-top: 1px;">${generatedDate}</div>
+        </div>
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Terms / Mode</div>
+          <div style="font-size: 12px; font-weight: 800; color: #000000; margin-top: 1px;">Credit & Loans</div>
+        </div>
+        <div style="padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Instrument / Ref No.</div>
+          <div style="font-size: 12px; font-weight: 800; font-family: monospace; color: #000000; margin-top: 1px;">FIN-REG-${totalFinanciers}</div>
+        </div>
+      </div>
+
+      <!-- Itemized Facilities Table (Purchases Bordered Table Layout) -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; border: 1px solid #000000; font-size: 11px;">
         <thead>
-          <tr style="background: #0f172a; color: #ffffff; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">
-            <th style="padding: 8px 6px; width: 32px; text-align: center;">#</th>
-            <th style="padding: 8px 10px; text-align: left;">Financier Name</th>
-            <th style="padding: 8px 10px; text-align: left;">Phone</th>
-            <th style="padding: 8px 10px; text-align: left;">Office Address</th>
-            <th style="padding: 8px 10px; text-align: center;">Interest Rate</th>
-            <th style="padding: 8px 10px; text-align: center;">Active Loans</th>
-            <th style="padding: 8px 10px; text-align: right;">Outstanding (₹)</th>
-            <th style="padding: 8px 8px; text-align: center; width: 70px;">Status</th>
+          <tr style="background: #f5f5f5; border-bottom: 1px solid #000000; text-transform: uppercase; font-size: 10px; font-weight: 700; color: #000000;">
+            <th style="border-right: 1px solid #000000; padding: 6px 4px; width: 36px; text-align: center;">SI No.</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Description of Financier / Credit Entity</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Office Address</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; width: 75px;">Rate</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; width: 55px;">Notes</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; width: 65px;">Status</th>
+            <th style="padding: 6px 8px; text-align: right; width: 110px;">Outstanding (₹)</th>
           </tr>
         </thead>
         <tbody>
-          ${rowsHtml || `<tr><td colspan="8" style="text-align: center; padding: 24px; color: #94a3b8; font-style: italic;">No financiers match the selected filters.</td></tr>`}
+          ${rowsHtml || `<tr><td colspan="7" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">No financiers registered in Vastrams ERP.</td></tr>`}
         </tbody>
         <tfoot>
-          <tr style="background: #f1f5f9; border-top: 2px solid #0f172a; font-weight: 800; font-size: 11px;">
-            <td colspan="5" style="padding: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a;">Total Summary (${totalFinanciers} Financiers)</td>
-            <td style="padding: 10px; text-align: center; color: #4f46e5; font-size: 12px;">${totalActiveLoans}</td>
-            <td style="padding: 10px; text-align: right; color: #be123c; font-size: 13px; font-family: monospace;">${fmtCurrency(totalOutstanding)}</td>
-            <td></td>
+          <tr style="background: #f8fafc; border-top: 2px solid #000000; font-weight: 800; font-size: 11px;">
+            <td colspan="4" style="border-right: 1px solid #000000; padding: 8px 10px; text-transform: uppercase; color: #000000;">
+              Total Outstanding Summary (${totalFinanciers} Financiers)
+            </td>
+            <td style="border-right: 1px solid #000000; padding: 8px 6px; text-align: center; color: #000000;">${totalActiveLoans}</td>
+            <td style="border-right: 1px solid #000000; padding: 8px 6px; text-align: center; color: #000000;">—</td>
+            <td style="padding: 8px 8px; text-align: right; color: #000000; font-size: 12px; font-family: monospace;">
+              ${fmtCurrency(totalOutstanding)}
+            </td>
           </tr>
         </tfoot>
       </table>
 
-      <!-- Signatures & Record-keeping Certification -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 36px; padding-top: 20px; border-top: 1px dashed #cbd5e1;">
-        <div style="font-size: 10px; color: #64748b; max-width: 440px;">
-          <p style="margin: 0; font-weight: 600; color: #334155;">Computer-Generated Business Record</p>
-          <p style="margin: 2px 0 0 0;">This document reflects official credit liabilities and outstanding finance terms saved in Vastrams ERP. Certified for record-keeping and statutory reconciliation.</p>
-        </div>
-        <div style="text-align: center; width: 180px;">
-          <div style="border-bottom: 1px solid #0f172a; height: 35px; margin-bottom: 6px;"></div>
-          <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a; display: block;">Authorized Signatory</span>
-          <span style="font-size: 9px; color: #64748b;">Seal / Stamp</span>
+      <!-- Amount Chargeable in Words Box (Purchases Layout) -->
+      <div style="border: 1px solid #000000; padding: 8px 10px; margin-bottom: 12px; font-size: 11px; background: #ffffff;">
+        <span style="font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b;">Amount Chargeable (in words):</span>
+        <div style="font-weight: 800; color: #000000; margin-top: 2px; font-size: 11.5px;">
+          ${numberToWords(totalOutstanding)}
         </div>
       </div>
+
+      <!-- Bottom Dual Box: Company Bank Details & Declaration on Left, Authorised Signatory on Right -->
+      <div style="border: 1px solid #000000; display: grid; grid-template-columns: 1.4fr 1fr;">
+        <div style="padding: 10px 12px; border-right: 1px solid #000000; font-size: 10px; color: #334155; line-height: 1.4;">
+          <p style="margin: 0 0 4px 0; font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b;">Company Bank Details:</p>
+          <p style="margin: 0;"><strong>Bank Name:</strong> ${bankName}</p>
+          <p style="margin: 1px 0 0 0;"><strong>A/C No:</strong> <span style="font-family: monospace;">${bankAccount}</span></p>
+          <p style="margin: 1px 0 0 0;"><strong>Branch & IFS Code:</strong> <span style="font-family: monospace;">${bankIFSC}</span></p>
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 9px; color: #64748b;">
+            <strong>Declaration:</strong> We declare that this document reflects the actual transactions recorded in the Vastrams ERP system and that all particulars are true and correct. Certified for record-keeping and statutory reconciliation.
+          </div>
+        </div>
+
+        <div style="padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; background: #fafafa;">
+          <div>
+            <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000000;">For ${compName}</span>
+          </div>
+          <div style="margin-top: 40px; text-align: center;">
+            <div style="border-bottom: 1px solid #000000; width: 140px; margin: 0 0 4px auto;"></div>
+            <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #000000;">Authorized Signatory</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   `
 }
 
 /**
- * Builds printable HTML document for Financier Profile Statement
+ * Builds Purchases-style box-bordered HTML document for Financier Profile Statement
  */
 export function buildFinancierProfileHtml({ profile = {}, loans = [], companyProfile = {} }) {
   const compName = companyProfile.businessName || 'Vastrams'
+  const compAddress = companyProfile.address || '123 Main St, Surat, Gujarat'
+  const compGstin = companyProfile.gstin || '24AAAAA0000A1Z0'
+  const compState = (compGstin || '24').substring(0, 2)
+  const bankName = companyProfile.bankName || 'HDFC Bank'
+  const bankAccount = companyProfile.bankAccount || '50200012345678'
+  const bankIFSC = companyProfile.bankIFSC || 'HDFC0001234'
+
+  const generatedDate = getTodayDateString()
   const generatedAt = getFormattedTimestamp()
+  const ackNo = getAckNo('LN')
 
   const totalLoans = loans.length
   const totalLoaned = loans.reduce((s, l) => s + (l.amount || 0), 0)
@@ -183,118 +318,173 @@ export function buildFinancierProfileHtml({ profile = {}, loans = [], companyPro
   const totalOutstanding = loans.reduce((s, l) => s + (l.outstanding || 0), 0)
 
   const rowsHtml = loans.map((l, idx) => {
-    const isEven = idx % 2 === 1
     const dDate = l.date ? formatDateDisplay(l.date) : '—'
     const mDate = l.maturityDate ? formatDateDisplay(l.maturityDate) : '—'
     const rateStr = l.interestRate !== null && l.interestRate !== undefined && !isNaN(l.interestRate) ? `${l.interestRate}% p.a.` : '—'
-    const statusColor = String(l.status).toLowerCase() === 'closed' ? '#047857' : (String(l.status).toLowerCase() === 'overdue' ? '#b91c1c' : '#4f46e5')
-    const statusBg = String(l.status).toLowerCase() === 'closed' ? '#d1fae5' : (String(l.status).toLowerCase() === 'overdue' ? '#fee2e2' : '#e0e7ff')
 
     return `
-      <tr style="background-color: ${isEven ? '#f8fafc' : '#ffffff'}; border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 9px 8px; text-align: center; color: #64748b; font-size: 11px;">${idx + 1}</td>
-        <td style="padding: 9px 10px; font-family: monospace; font-weight: 700; color: #0f172a; font-size: 11px;">#${l.noteNo || '—'}</td>
-        <td style="padding: 9px 10px; color: #334155; font-size: 11px; white-space: nowrap;">${dDate}</td>
-        <td style="padding: 9px 10px; color: #64748b; font-size: 11px; white-space: nowrap;">${mDate}</td>
-        <td style="padding: 9px 10px; text-align: center; color: #475569; font-size: 11px;">${rateStr}</td>
-        <td style="padding: 9px 10px; text-align: right; font-weight: 600; color: #0f172a; font-size: 11px; font-family: monospace;">${fmtCurrency(l.amount)}</td>
-        <td style="padding: 9px 10px; text-align: right; font-weight: 600; color: #047857; font-size: 11px; font-family: monospace;">${fmtCurrency(l.paid)}</td>
-        <td style="padding: 9px 10px; text-align: right; font-weight: 700; color: ${l.outstanding > 0 ? '#b91c1c' : '#047857'}; font-size: 12px; font-family: monospace;">${fmtCurrency(l.outstanding)}</td>
-        <td style="padding: 9px 8px; text-align: center;">
-          <span style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 700; background-color: ${statusBg}; color: ${statusColor};">${l.status || 'Active'}</span>
-        </td>
+      <tr style="border-bottom: 1px solid #000000;">
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 11px;">${idx + 1}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-family: monospace; font-weight: 700; color: #000000; font-size: 11px;">#${l.noteNo || '—'}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-size: 11px; white-space: nowrap;">${dDate}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-size: 11px; white-space: nowrap;">${mDate}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 11px;">${rateStr}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: right; font-weight: 600; font-family: monospace; font-size: 11px;">${fmtCurrency(l.amount)}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: right; font-weight: 600; font-family: monospace; font-size: 11px;">${fmtCurrency(l.paid)}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 10px; font-weight: 700;">${l.status || 'Active'}</td>
+        <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #000000; font-size: 11px; font-family: monospace;">${fmtCurrency(l.outstanding)}</td>
       </tr>
     `
   }).join('')
 
   return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; background: #ffffff; padding: 32px 36px; width: 800px; box-sizing: border-box; line-height: 1.4;">
-      <!-- Header -->
-      <div style="border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #000000; background: #ffffff; padding: 16px 20px; width: 800px; box-sizing: border-box; line-height: 1.35; border: 2px solid #000000;">
+      
+      <!-- Top Title Box with e-Invoice QR (Purchases Layout) -->
+      <div style="border: 1px solid #000000; background: #f8fafc; padding: 12px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <h1 style="margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; color: #0f172a; text-transform: uppercase;">${compName}</h1>
-          <p style="margin: 2px 0 0 0; font-size: 11px; font-weight: 600; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px;">Vendor & Finance Management System</p>
-          <div style="margin-top: 8px; font-size: 11px; color: #334155;">
-            <p style="margin: 0; font-weight: 700; font-size: 13px; color: #0f172a;">Financier: ${profile.name || '—'}</p>
-            ${profile.phone ? `<p style="margin: 2px 0 0 0;">Phone: ${profile.phone}</p>` : ''}
-            ${profile.address ? `<p style="margin: 2px 0 0 0;">Address: ${profile.address}</p>` : ''}
+          <div style="font-size: 20px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #000000; margin-bottom: 2px;">
+            ${compName.toUpperCase()}
+          </div>
+          <div style="font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; margin-bottom: 6px;">
+            FINANCIER LOAN STATEMENT
+          </div>
+          <div style="font-size: 11px; font-family: monospace; color: #000000;">
+            <p style="margin: 0;"><strong>Ack No:</strong> <span style="color: #334155;">${ackNo}</span></p>
+            <p style="margin: 2px 0 0 0;"><strong>Ack Date:</strong> <span style="color: #334155;">${generatedDate}</span></p>
           </div>
         </div>
-        <div style="text-align: right;">
-          <div style="display: inline-block; background: #0f172a; color: #ffffff; padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">Financier Loan Statement</div>
-          <p style="margin: 8px 0 0 0; font-size: 10px; color: #64748b;">Generated: <strong style="color: #0f172a;">${generatedAt}</strong></p>
-          <p style="margin: 2px 0 0 0; font-size: 10px; color: #64748b;">Account Status: <strong style="color: #047857;">${profile.status || 'Active'}</strong></p>
-          ${profile.defaultInterestRate !== undefined ? `<p style="margin: 2px 0 0 0; font-size: 10px; color: #64748b;">Standard Rate: <strong>${profile.defaultInterestRate}% p.a.</strong></p>` : ''}
+        <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+          <span style="font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #475569; margin-bottom: 4px;">e-Invoice / Verified</span>
+          <div style="width: 64px; height: 64px; border: 1px solid #000000; padding: 2px; background: #ffffff; display: flex; align-items: center; justify-content: center;">
+            ${QR_SVG}
+          </div>
         </div>
       </div>
 
-      <!-- KPI Summary Cards -->
-      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
-        <div style="flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #f8fafc;">
-          <span style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Disbursed</span>
-          <p style="margin: 4px 0 0 0; font-size: 18px; font-weight: 800; color: #0f172a; font-family: monospace;">${fmtCurrency(totalLoaned)}</p>
+      <!-- Dual-Column Header Box: Recipient (Bill To) & Supplier (From) -->
+      <div style="border: 1px solid #000000; margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr;">
+        <!-- Left: Financier Recipient Details -->
+        <div style="border-right: 1px solid #000000; padding: 10px 12px; font-size: 11px;">
+          <h2 style="margin: 0 0 4px 0; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Recipient (Bill To / Financier)</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #000000;">${profile.name || 'Financier'}</p>
+          <p style="margin: 2px 0 0 0; color: #334155;">${profile.address || '—'}</p>
+          ${profile.phone ? `<p style="margin: 2px 0 0 0; color: #475569;"><strong>Phone:</strong> ${profile.phone}</p>` : ''}
+          <p style="margin: 4px 0 0 0; font-family: monospace;"><strong>Account Status:</strong> ${profile.status || 'Active'}</p>
+          ${profile.defaultInterestRate !== undefined ? `<p style="margin: 2px 0 0 0;"><strong>Standard Rate:</strong> ${profile.defaultInterestRate}% p.a.</p>` : ''}
         </div>
-        <div style="flex: 1; border: 1px solid #d1fae5; border-radius: 10px; padding: 12px 14px; background: #ecfdf5;">
-          <span style="font-size: 10px; font-weight: 700; color: #047857; text-transform: uppercase;">Total Principal Settled</span>
-          <p style="margin: 4px 0 0 0; font-size: 18px; font-weight: 800; color: #047857; font-family: monospace;">${fmtCurrency(totalPaid)}</p>
-        </div>
-        <div style="flex: 1.2; border: 1px solid #fecdd3; border-radius: 10px; padding: 12px 14px; background: #fff1f2;">
-          <span style="font-size: 10px; font-weight: 700; color: #9f1239; text-transform: uppercase;">Outstanding Balance</span>
-          <p style="margin: 4px 0 0 0; font-size: 18px; font-weight: 800; color: #be123c; font-family: monospace;">${fmtCurrency(totalOutstanding)}</p>
+
+        <!-- Right: Supplier (From) Details -->
+        <div style="padding: 10px 12px; font-size: 11px;">
+          <h2 style="margin: 0 0 4px 0; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Supplier (From / Issuer)</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #000000;">${compName}</p>
+          <p style="margin: 2px 0 0 0; color: #334155;">${compAddress}</p>
+          <p style="margin: 4px 0 0 0; font-family: monospace;"><strong>GSTIN/UIN:</strong> ${compGstin}</p>
+          <p style="margin: 2px 0 0 0;"><strong>State Code:</strong> ${compState}</p>
         </div>
       </div>
 
-      <!-- Facilities Table -->
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; border: 1px solid #cbd5e1; font-size: 11px;">
+      <!-- 4-Column Document Metadata Grid -->
+      <div style="border: 1px solid #000000; margin-bottom: 12px; display: grid; grid-template-columns: repeat(4, 1fr);">
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Document No.</div>
+          <div style="font-size: 12px; font-weight: 800; font-family: monospace; color: #000000; margin-top: 1px;">${ackNo}</div>
+        </div>
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Dated</div>
+          <div style="font-size: 12px; font-weight: 800; color: #000000; margin-top: 1px;">${generatedDate}</div>
+        </div>
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Payment Mode</div>
+          <div style="font-size: 12px; font-weight: 800; color: #000000; margin-top: 1px;">Bank Transfer / Credit</div>
+        </div>
+        <div style="padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Instrument / Ref No.</div>
+          <div style="font-size: 12px; font-weight: 800; font-family: monospace; color: #000000; margin-top: 1px;">LN-STMT-${totalLoans}</div>
+        </div>
+      </div>
+
+      <!-- Itemized Facilities Table (Purchases Bordered Table Layout) -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; border: 1px solid #000000; font-size: 11px;">
         <thead>
-          <tr style="background: #0f172a; color: #ffffff; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">
-            <th style="padding: 8px 6px; width: 32px; text-align: center;">#</th>
-            <th style="padding: 8px 10px; text-align: left;">Note #</th>
-            <th style="padding: 8px 10px; text-align: left;">Drawdown Date</th>
-            <th style="padding: 8px 10px; text-align: left;">Maturity Date</th>
-            <th style="padding: 8px 10px; text-align: center;">Rate</th>
-            <th style="padding: 8px 10px; text-align: right;">Principal (₹)</th>
-            <th style="padding: 8px 10px; text-align: right;">Repaid (₹)</th>
-            <th style="padding: 8px 10px; text-align: right;">Pending (₹)</th>
-            <th style="padding: 8px 8px; text-align: center; width: 65px;">Status</th>
+          <tr style="background: #f5f5f5; border-bottom: 1px solid #000000; text-transform: uppercase; font-size: 10px; font-weight: 700; color: #000000;">
+            <th style="border-right: 1px solid #000000; padding: 6px 4px; width: 36px; text-align: center;">SI No.</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Note #</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Drawdown Date</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Maturity Date</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center;">Rate</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: right;">Principal (₹)</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: right;">Repaid (₹)</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; width: 65px;">Status</th>
+            <th style="padding: 6px 8px; text-align: right; width: 105px;">Pending (₹)</th>
           </tr>
         </thead>
         <tbody>
-          ${rowsHtml || `<tr><td colspan="9" style="text-align: center; padding: 24px; color: #94a3b8; font-style: italic;">No loan notes recorded for this financier.</td></tr>`}
+          ${rowsHtml || `<tr><td colspan="9" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">No loan notes recorded for this financier.</td></tr>`}
         </tbody>
         <tfoot>
-          <tr style="background: #f1f5f9; border-top: 2px solid #0f172a; font-weight: 800; font-size: 11px;">
-            <td colspan="5" style="padding: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a;">Totals (${totalLoans} Notes)</td>
-            <td style="padding: 10px; text-align: right; color: #0f172a; font-family: monospace;">${fmtCurrency(totalLoaned)}</td>
-            <td style="padding: 10px; text-align: right; color: #047857; font-family: monospace;">${fmtCurrency(totalPaid)}</td>
-            <td style="padding: 10px; text-align: right; color: #be123c; font-size: 12px; font-family: monospace;">${fmtCurrency(totalOutstanding)}</td>
-            <td></td>
+          <tr style="background: #f8fafc; border-top: 2px solid #000000; font-weight: 800; font-size: 11px;">
+            <td colspan="5" style="border-right: 1px solid #000000; padding: 8px 10px; text-transform: uppercase; color: #000000;">
+              Totals (${totalLoans} Notes)
+            </td>
+            <td style="border-right: 1px solid #000000; padding: 8px 8px; text-align: right; font-family: monospace;">${fmtCurrency(totalLoaned)}</td>
+            <td style="border-right: 1px solid #000000; padding: 8px 8px; text-align: right; font-family: monospace;">${fmtCurrency(totalPaid)}</td>
+            <td style="border-right: 1px solid #000000; padding: 8px 6px; text-align: center;">—</td>
+            <td style="padding: 8px 8px; text-align: right; color: #000000; font-size: 12px; font-family: monospace;">${fmtCurrency(totalOutstanding)}</td>
           </tr>
         </tfoot>
       </table>
 
-      <!-- Footer & Signatures -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 36px; padding-top: 20px; border-top: 1px dashed #cbd5e1;">
-        <div style="font-size: 10px; color: #64748b; max-width: 440px;">
-          <p style="margin: 0; font-weight: 600; color: #334155;">Computer-Generated Business Record</p>
-          <p style="margin: 2px 0 0 0;">This statement summarizes principal drawdowns and repayment allocations for ${profile.name || 'this financier'}. Certified for commercial records.</p>
-        </div>
-        <div style="text-align: center; width: 180px;">
-          <div style="border-bottom: 1px solid #0f172a; height: 35px; margin-bottom: 6px;"></div>
-          <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a; display: block;">Authorized Signatory</span>
-          <span style="font-size: 9px; color: #64748b;">Seal / Stamp</span>
+      <!-- Amount Chargeable in Words Box (Purchases Layout) -->
+      <div style="border: 1px solid #000000; padding: 8px 10px; margin-bottom: 12px; font-size: 11px; background: #ffffff;">
+        <span style="font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b;">Amount Chargeable (in words):</span>
+        <div style="font-weight: 800; color: #000000; margin-top: 2px; font-size: 11.5px;">
+          ${numberToWords(totalOutstanding)}
         </div>
       </div>
+
+      <!-- Bottom Dual Box: Company Bank Details & Declaration on Left, Authorised Signatory on Right -->
+      <div style="border: 1px solid #000000; display: grid; grid-template-columns: 1.4fr 1fr;">
+        <div style="padding: 10px 12px; border-right: 1px solid #000000; font-size: 10px; color: #334155; line-height: 1.4;">
+          <p style="margin: 0 0 4px 0; font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b;">Company Bank Details:</p>
+          <p style="margin: 0;"><strong>Bank Name:</strong> ${bankName}</p>
+          <p style="margin: 1px 0 0 0;"><strong>A/C No:</strong> <span style="font-family: monospace;">${bankAccount}</span></p>
+          <p style="margin: 1px 0 0 0;"><strong>Branch & IFS Code:</strong> <span style="font-family: monospace;">${bankIFSC}</span></p>
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 9px; color: #64748b;">
+            <strong>Declaration:</strong> This statement summarizes principal drawdowns and repayment allocations for ${profile.name || 'this financier'}. Certified for commercial records.
+          </div>
+        </div>
+
+        <div style="padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; background: #fafafa;">
+          <div>
+            <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000000;">For ${compName}</span>
+          </div>
+          <div style="margin-top: 40px; text-align: center;">
+            <div style="border-bottom: 1px solid #000000; width: 140px; margin: 0 0 4px auto;"></div>
+            <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #000000;">Authorized Signatory</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   `
 }
 
 /**
- * Builds printable HTML document for Loans & Credit Facilities Register
+ * Builds Purchases-style box-bordered HTML document for Loans & Credit Facilities Register
  */
 export function buildLoansRegisterHtml({ loans = [], companyProfile = {}, search = '', statusFilter = 'ALL', sortBy = '' }) {
   const compName = companyProfile.businessName || 'Vastrams'
+  const compAddress = companyProfile.address || '123 Main St, Surat, Gujarat'
+  const compGstin = companyProfile.gstin || '24AAAAA0000A1Z0'
+  const compState = (compGstin || '24').substring(0, 2)
+  const bankName = companyProfile.bankName || 'HDFC Bank'
+  const bankAccount = companyProfile.bankAccount || '50200012345678'
+  const bankIFSC = companyProfile.bankIFSC || 'HDFC0001234'
+
+  const generatedDate = getTodayDateString()
   const generatedAt = getFormattedTimestamp()
+  const ackNo = getAckNo('LN')
 
   const totalLoans = loans.length
   const totalPrincipal = loans.reduce((s, l) => s + (l.amount || 0), 0)
@@ -302,200 +492,319 @@ export function buildLoansRegisterHtml({ loans = [], companyProfile = {}, search
   const totalPending = loans.reduce((s, l) => s + (l.pending || 0), 0)
 
   const rowsHtml = loans.map((l, idx) => {
-    const isEven = idx % 2 === 1
     const dDate = l.loanDate ? formatDateDisplay(l.loanDate) : '—'
     const mDate = l.maturityDate ? formatDateDisplay(l.maturityDate) : '—'
     const rateStr = l.rate !== null && l.rate !== undefined && l.rate !== '' ? `${l.rate}% p.a.` : '—'
-    const statusColor = String(l.status).toLowerCase() === 'closed' ? '#047857' : (String(l.status).toLowerCase() === 'overdue' ? '#b91c1c' : '#4f46e5')
-    const statusBg = String(l.status).toLowerCase() === 'closed' ? '#d1fae5' : (String(l.status).toLowerCase() === 'overdue' ? '#fee2e2' : '#e0e7ff')
 
     return `
-      <tr style="background-color: ${isEven ? '#f8fafc' : '#ffffff'}; border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 9px 8px; text-align: center; color: #64748b; font-size: 11px;">${idx + 1}</td>
-        <td style="padding: 9px 10px; font-family: monospace; font-weight: 700; color: #0f172a; font-size: 11px;">#${l.noteNo || '—'}</td>
-        <td style="padding: 9px 10px; font-weight: 600; color: #0f172a; font-size: 11px;">${l.financier || '—'}</td>
-        <td style="padding: 9px 10px; color: #334155; font-size: 11px; white-space: nowrap;">${dDate}</td>
-        <td style="padding: 9px 10px; color: #64748b; font-size: 11px; white-space: nowrap;">${mDate}</td>
-        <td style="padding: 9px 10px; text-align: center; color: #475569; font-size: 11px;">${rateStr}</td>
-        <td style="padding: 9px 10px; text-align: right; font-weight: 600; color: #0f172a; font-size: 11px; font-family: monospace;">${fmtCurrency(l.amount)}</td>
-        <td style="padding: 9px 10px; text-align: right; font-weight: 600; color: #047857; font-size: 11px; font-family: monospace;">${fmtCurrency(l.repaid)}</td>
-        <td style="padding: 9px 10px; text-align: right; font-weight: 700; color: ${l.pending > 0 ? '#b91c1c' : '#047857'}; font-size: 12px; font-family: monospace;">${fmtCurrency(l.pending)}</td>
-        <td style="padding: 9px 8px; text-align: center;">
-          <span style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 700; background-color: ${statusBg}; color: ${statusColor};">${l.status || 'Active'}</span>
-        </td>
+      <tr style="border-bottom: 1px solid #000000;">
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 11px;">${idx + 1}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-family: monospace; font-weight: 700; color: #000000; font-size: 11px;">#${l.noteNo || '—'}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-weight: 700; color: #000000; font-size: 11px;">${l.financier || '—'}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-size: 11px; white-space: nowrap;">${dDate}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-size: 11px; white-space: nowrap;">${mDate}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 11px;">${rateStr}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: right; font-weight: 600; font-family: monospace; font-size: 11px;">${fmtCurrency(l.amount)}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: right; font-weight: 600; font-family: monospace; font-size: 11px;">${fmtCurrency(l.repaid)}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 10px; font-weight: 700;">${l.status || 'Active'}</td>
+        <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #000000; font-size: 11px; font-family: monospace;">${fmtCurrency(l.pending)}</td>
       </tr>
     `
   }).join('')
 
   return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; background: #ffffff; padding: 32px 36px; width: 850px; box-sizing: border-box; line-height: 1.4;">
-      <!-- Header -->
-      <div style="border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #000000; background: #ffffff; padding: 16px 20px; width: 850px; box-sizing: border-box; line-height: 1.35; border: 2px solid #000000;">
+      
+      <!-- Top Title Box with e-Invoice QR (Purchases Layout) -->
+      <div style="border: 1px solid #000000; background: #f8fafc; padding: 12px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <h1 style="margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; color: #0f172a; text-transform: uppercase;">${compName}</h1>
-          <p style="margin: 2px 0 0 0; font-size: 11px; font-weight: 600; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px;">Vendor & Finance Management System</p>
+          <div style="font-size: 20px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #000000; margin-bottom: 2px;">
+            ${compName.toUpperCase()}
+          </div>
+          <div style="font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; margin-bottom: 6px;">
+            LOANS REGISTER
+          </div>
+          <div style="font-size: 11px; font-family: monospace; color: #000000;">
+            <p style="margin: 0;"><strong>Ack No:</strong> <span style="color: #334155;">${ackNo}</span></p>
+            <p style="margin: 2px 0 0 0;"><strong>Ack Date:</strong> <span style="color: #334155;">${generatedDate}</span></p>
+          </div>
         </div>
-        <div style="text-align: right;">
-          <div style="display: inline-block; background: #4f46e5; color: #ffffff; padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">Loans Register</div>
-          <p style="margin: 8px 0 0 0; font-size: 10px; color: #64748b;">Generated: <strong style="color: #0f172a;">${generatedAt}</strong></p>
-          <p style="margin: 2px 0 0 0; font-size: 10px; color: #64748b;">Facilities: <strong style="color: #0f172a;">${totalLoans} Notes</strong></p>
-        </div>
-      </div>
-
-      <!-- KPI Summary Cards -->
-      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
-        <div style="flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #f8fafc;">
-          <span style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Principal Disbursed</span>
-          <p style="margin: 4px 0 0 0; font-size: 18px; font-weight: 800; color: #0f172a; font-family: monospace;">${fmtCurrency(totalPrincipal)}</p>
-        </div>
-        <div style="flex: 1; border: 1px solid #d1fae5; border-radius: 10px; padding: 12px 14px; background: #ecfdf5;">
-          <span style="font-size: 10px; font-weight: 700; color: #047857; text-transform: uppercase;">Total Repaid</span>
-          <p style="margin: 4px 0 0 0; font-size: 18px; font-weight: 800; color: #047857; font-family: monospace;">${fmtCurrency(totalRepaid)}</p>
-        </div>
-        <div style="flex: 1.2; border: 1px solid #fecdd3; border-radius: 10px; padding: 12px 14px; background: #fff1f2;">
-          <span style="font-size: 10px; font-weight: 700; color: #9f1239; text-transform: uppercase;">Total Outstanding Exposure</span>
-          <p style="margin: 4px 0 0 0; font-size: 18px; font-weight: 800; color: #be123c; font-family: monospace;">${fmtCurrency(totalPending)}</p>
+        <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+          <span style="font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #475569; margin-bottom: 4px;">e-Invoice / Verified</span>
+          <div style="width: 64px; height: 64px; border: 1px solid #000000; padding: 2px; background: #ffffff; display: flex; align-items: center; justify-content: center;">
+            ${QR_SVG}
+          </div>
         </div>
       </div>
 
-      <!-- Main Loans Table -->
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; border: 1px solid #cbd5e1; font-size: 11px;">
+      <!-- Dual-Column Header Box: Recipient (Bill To) & Supplier (From) -->
+      <div style="border: 1px solid #000000; margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr;">
+        <!-- Left: Recipient Details -->
+        <div style="border-right: 1px solid #000000; padding: 10px 12px; font-size: 11px;">
+          <h2 style="margin: 0 0 4px 0; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Recipient (Bill To / Counterparties)</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #000000;">All Loan & Credit Facilities (${totalLoans})</p>
+          <p style="margin: 2px 0 0 0; color: #334155;">Status Filter: ${statusFilter} ${search ? `| Search: "${search}"` : ''}</p>
+          <p style="margin: 4px 0 0 0; font-family: monospace;"><strong>Total Principal:</strong> ${fmtCurrency(totalPrincipal)}</p>
+          <p style="margin: 2px 0 0 0;"><strong>State Code:</strong> ${compState}</p>
+        </div>
+
+        <!-- Right: Supplier (From) Details -->
+        <div style="padding: 10px 12px; font-size: 11px;">
+          <h2 style="margin: 0 0 4px 0; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Supplier (From / Issuer)</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #000000;">${compName}</p>
+          <p style="margin: 2px 0 0 0; color: #334155;">${compAddress}</p>
+          <p style="margin: 4px 0 0 0; font-family: monospace;"><strong>GSTIN/UIN:</strong> ${compGstin}</p>
+          <p style="margin: 2px 0 0 0;"><strong>State Code:</strong> ${compState}</p>
+        </div>
+      </div>
+
+      <!-- 4-Column Document Metadata Grid -->
+      <div style="border: 1px solid #000000; margin-bottom: 12px; display: grid; grid-template-columns: repeat(4, 1fr);">
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Document No.</div>
+          <div style="font-size: 12px; font-weight: 800; font-family: monospace; color: #000000; margin-top: 1px;">${ackNo}</div>
+        </div>
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Dated</div>
+          <div style="font-size: 12px; font-weight: 800; color: #000000; margin-top: 1px;">${generatedDate}</div>
+        </div>
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Payment Mode</div>
+          <div style="font-size: 12px; font-weight: 800; color: #000000; margin-top: 1px;">Bank Credit / Cheque</div>
+        </div>
+        <div style="padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Instrument / Ref No.</div>
+          <div style="font-size: 12px; font-weight: 800; font-family: monospace; color: #000000; margin-top: 1px;">LN-REG-${totalLoans}</div>
+        </div>
+      </div>
+
+      <!-- Itemized Facilities Table (Purchases Bordered Table Layout) -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; border: 1px solid #000000; font-size: 11px;">
         <thead>
-          <tr style="background: #0f172a; color: #ffffff; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">
-            <th style="padding: 8px 6px; width: 30px; text-align: center;">#</th>
-            <th style="padding: 8px 8px; text-align: left;">Note #</th>
-            <th style="padding: 8px 10px; text-align: left;">Financier</th>
-            <th style="padding: 8px 10px; text-align: left;">Drawdown Date</th>
-            <th style="padding: 8px 10px; text-align: left;">Maturity Date</th>
-            <th style="padding: 8px 8px; text-align: center;">Rate</th>
-            <th style="padding: 8px 10px; text-align: right;">Principal (₹)</th>
-            <th style="padding: 8px 10px; text-align: right;">Repaid (₹)</th>
-            <th style="padding: 8px 10px; text-align: right;">Pending (₹)</th>
-            <th style="padding: 8px 8px; text-align: center; width: 65px;">Status</th>
+          <tr style="background: #f5f5f5; border-bottom: 1px solid #000000; text-transform: uppercase; font-size: 10px; font-weight: 700; color: #000000;">
+            <th style="border-right: 1px solid #000000; padding: 6px 4px; width: 34px; text-align: center;">SI No.</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Note #</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Financier</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Drawdown Date</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Maturity Date</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; width: 65px;">Rate</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: right;">Principal (₹)</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: right;">Repaid (₹)</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; width: 60px;">Status</th>
+            <th style="padding: 6px 8px; text-align: right; width: 105px;">Pending (₹)</th>
           </tr>
         </thead>
         <tbody>
-          ${rowsHtml || `<tr><td colspan="10" style="text-align: center; padding: 24px; color: #94a3b8; font-style: italic;">No loans match the current selection.</td></tr>`}
+          ${rowsHtml || `<tr><td colspan="10" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">No loans match the current selection.</td></tr>`}
         </tbody>
         <tfoot>
-          <tr style="background: #f1f5f9; border-top: 2px solid #0f172a; font-weight: 800; font-size: 11px;">
-            <td colspan="6" style="padding: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a;">Totals (${totalLoans} Facilities)</td>
-            <td style="padding: 10px; text-align: right; color: #0f172a; font-family: monospace;">${fmtCurrency(totalPrincipal)}</td>
-            <td style="padding: 10px; text-align: right; color: #047857; font-family: monospace;">${fmtCurrency(totalRepaid)}</td>
-            <td style="padding: 10px; text-align: right; color: #be123c; font-size: 12px; font-family: monospace;">${fmtCurrency(totalPending)}</td>
-            <td></td>
+          <tr style="background: #f8fafc; border-top: 2px solid #000000; font-weight: 800; font-size: 11px;">
+            <td colspan="6" style="border-right: 1px solid #000000; padding: 8px 10px; text-transform: uppercase; color: #000000;">
+              Totals (${totalLoans} Facilities)
+            </td>
+            <td style="border-right: 1px solid #000000; padding: 8px 8px; text-align: right; font-family: monospace;">${fmtCurrency(totalPrincipal)}</td>
+            <td style="border-right: 1px solid #000000; padding: 8px 8px; text-align: right; font-family: monospace;">${fmtCurrency(totalRepaid)}</td>
+            <td style="border-right: 1px solid #000000; padding: 8px 6px; text-align: center;">—</td>
+            <td style="padding: 8px 8px; text-align: right; color: #000000; font-size: 12px; font-family: monospace;">${fmtCurrency(totalPending)}</td>
           </tr>
         </tfoot>
       </table>
 
-      <!-- Signatures -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 36px; padding-top: 20px; border-top: 1px dashed #cbd5e1;">
-        <div style="font-size: 10px; color: #64748b; max-width: 440px;">
-          <p style="margin: 0; font-weight: 600; color: #334155;">Computer-Generated Business Record</p>
-          <p style="margin: 2px 0 0 0;">Certified register of financial notes and loan exposures as recorded in Vastrams database.</p>
-        </div>
-        <div style="text-align: center; width: 180px;">
-          <div style="border-bottom: 1px solid #0f172a; height: 35px; margin-bottom: 6px;"></div>
-          <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a; display: block;">Authorized Signatory</span>
-          <span style="font-size: 9px; color: #64748b;">Seal / Stamp</span>
+      <!-- Amount Chargeable in Words Box (Purchases Layout) -->
+      <div style="border: 1px solid #000000; padding: 8px 10px; margin-bottom: 12px; font-size: 11px; background: #ffffff;">
+        <span style="font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b;">Amount Chargeable (in words):</span>
+        <div style="font-weight: 800; color: #000000; margin-top: 2px; font-size: 11.5px;">
+          ${numberToWords(totalPending)}
         </div>
       </div>
+
+      <!-- Bottom Dual Box: Company Bank Details & Declaration on Left, Authorised Signatory on Right -->
+      <div style="border: 1px solid #000000; display: grid; grid-template-columns: 1.4fr 1fr;">
+        <div style="padding: 10px 12px; border-right: 1px solid #000000; font-size: 10px; color: #334155; line-height: 1.4;">
+          <p style="margin: 0 0 4px 0; font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b;">Company Bank Details:</p>
+          <p style="margin: 0;"><strong>Bank Name:</strong> ${bankName}</p>
+          <p style="margin: 1px 0 0 0;"><strong>A/C No:</strong> <span style="font-family: monospace;">${bankAccount}</span></p>
+          <p style="margin: 1px 0 0 0;"><strong>Branch & IFS Code:</strong> <span style="font-family: monospace;">${bankIFSC}</span></p>
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 9px; color: #64748b;">
+            <strong>Declaration:</strong> Certified register of financial notes and loan exposures as recorded in Vastrams database. All particulars are true and correct.
+          </div>
+        </div>
+
+        <div style="padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; background: #fafafa;">
+          <div>
+            <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000000;">For ${compName}</span>
+          </div>
+          <div style="margin-top: 40px; text-align: center;">
+            <div style="border-bottom: 1px solid #000000; width: 140px; margin: 0 0 4px auto;"></div>
+            <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #000000;">Authorized Signatory</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   `
 }
 
 /**
- * Builds printable HTML document for Financier Repayments Register
+ * Builds Purchases-style box-bordered HTML document for Financier Repayments Register
  */
 export function buildFinancierRepaymentsHtml({ repayments = [], companyProfile = {}, search = '', modeFilter = 'ALL' }) {
   const compName = companyProfile.businessName || 'Vastrams'
+  const compAddress = companyProfile.address || '123 Main St, Surat, Gujarat'
+  const compGstin = companyProfile.gstin || '24AAAAA0000A1Z0'
+  const compState = (compGstin || '24').substring(0, 2)
+  const bankName = companyProfile.bankName || 'HDFC Bank'
+  const bankAccount = companyProfile.bankAccount || '50200012345678'
+  const bankIFSC = companyProfile.bankIFSC || 'HDFC0001234'
+
+  const generatedDate = getTodayDateString()
   const generatedAt = getFormattedTimestamp()
+  const ackNo = getAckNo('REP')
 
   const totalRepayments = repayments.length
   const totalRepaid = repayments.reduce((s, r) => s + (r.amount || 0), 0)
 
   const rowsHtml = repayments.map((r, idx) => {
-    const isEven = idx % 2 === 1
     const rDate = r.date ? formatDateDisplay(r.date) : '—'
 
     return `
-      <tr style="background-color: ${isEven ? '#f8fafc' : '#ffffff'}; border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 9px 8px; text-align: center; color: #64748b; font-size: 11px;">${idx + 1}</td>
-        <td style="padding: 9px 10px; font-family: monospace; font-weight: 700; color: #0f172a; font-size: 11px;">${r.ref || '—'}</td>
-        <td style="padding: 9px 10px; font-weight: 700; color: #0f172a; font-size: 11px;">${r.financier || '—'}</td>
-        <td style="padding: 9px 10px; color: #334155; font-size: 11px; white-space: nowrap;">${rDate}</td>
-        <td style="padding: 9px 10px; text-align: center; font-size: 11px;">
-          <span style="display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; background: #e0e7ff; color: #3730a3;">${r.mode || 'Bank Transfer'}</span>
-        </td>
-        <td style="padding: 9px 10px; color: #64748b; font-size: 11px; max-width: 180px; word-break: break-word;">${r.remarks || '—'}</td>
-        <td style="padding: 9px 10px; text-align: right; font-weight: 800; color: #047857; font-size: 12px; font-family: monospace;">${fmtCurrency(r.amount)}</td>
+      <tr style="border-bottom: 1px solid #000000;">
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 11px;">${idx + 1}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-family: monospace; font-weight: 700; color: #000000; font-size: 11px;">${r.ref || '—'}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-weight: 700; color: #000000; font-size: 11px;">${r.financier || '—'}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; font-size: 11px; white-space: nowrap;">${rDate}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center; font-size: 11px;">${r.mode || 'Bank Transfer'}</td>
+        <td style="border-right: 1px solid #000000; padding: 6px 8px; color: #334155; font-size: 10px; max-width: 180px; word-break: break-word;">${r.remarks || '—'}</td>
+        <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #000000; font-size: 11px; font-family: monospace;">${fmtCurrency(r.amount)}</td>
       </tr>
     `
   }).join('')
 
   return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; background: #ffffff; padding: 32px 36px; width: 800px; box-sizing: border-box; line-height: 1.4;">
-      <!-- Header -->
-      <div style="border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #000000; background: #ffffff; padding: 16px 20px; width: 800px; box-sizing: border-box; line-height: 1.35; border: 2px solid #000000;">
+      
+      <!-- Top Title Box with e-Invoice QR (Purchases Layout) -->
+      <div style="border: 1px solid #000000; background: #f8fafc; padding: 12px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <h1 style="margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; color: #0f172a; text-transform: uppercase;">${compName}</h1>
-          <p style="margin: 2px 0 0 0; font-size: 11px; font-weight: 600; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px;">Vendor & Finance Management System</p>
+          <div style="font-size: 20px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #000000; margin-bottom: 2px;">
+            ${compName.toUpperCase()}
+          </div>
+          <div style="font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; margin-bottom: 6px;">
+            FINANCIER REPAYMENTS
+          </div>
+          <div style="font-size: 11px; font-family: monospace; color: #000000;">
+            <p style="margin: 0;"><strong>Ack No:</strong> <span style="color: #334155;">${ackNo}</span></p>
+            <p style="margin: 2px 0 0 0;"><strong>Ack Date:</strong> <span style="color: #334155;">${generatedDate}</span></p>
+          </div>
         </div>
-        <div style="text-align: right;">
-          <div style="display: inline-block; background: #047857; color: #ffffff; padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">Financier Repayments</div>
-          <p style="margin: 8px 0 0 0; font-size: 10px; color: #64748b;">Generated: <strong style="color: #0f172a;">${generatedAt}</strong></p>
-          <p style="margin: 2px 0 0 0; font-size: 10px; color: #64748b;">Vouchers: <strong style="color: #0f172a;">${totalRepayments} Recorded</strong></p>
-        </div>
-      </div>
-
-      <!-- KPI Summary Cards -->
-      <div style="display: flex; gap: 12px; margin-bottom: 24px;">
-        <div style="flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #f8fafc;">
-          <span style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Repayment Vouchers</span>
-          <p style="margin: 4px 0 0 0; font-size: 20px; font-weight: 800; color: #0f172a;">${totalRepayments}</p>
-        </div>
-        <div style="flex: 1.5; border: 1px solid #d1fae5; border-radius: 10px; padding: 12px 14px; background: #ecfdf5;">
-          <span style="font-size: 10px; font-weight: 700; color: #047857; text-transform: uppercase;">Total Principal Settled</span>
-          <p style="margin: 4px 0 0 0; font-size: 20px; font-weight: 800; color: #047857; font-family: monospace;">${fmtCurrency(totalRepaid)}</p>
+        <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+          <span style="font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #475569; margin-bottom: 4px;">e-Invoice / Verified</span>
+          <div style="width: 64px; height: 64px; border: 1px solid #000000; padding: 2px; background: #ffffff; display: flex; align-items: center; justify-content: center;">
+            ${QR_SVG}
+          </div>
         </div>
       </div>
 
-      <!-- Repayments Table -->
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; border: 1px solid #cbd5e1; font-size: 11px;">
+      <!-- Dual-Column Header Box: Recipient (Bill To) & Supplier (From) -->
+      <div style="border: 1px solid #000000; margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr;">
+        <!-- Left: Recipient Details -->
+        <div style="border-right: 1px solid #000000; padding: 10px 12px; font-size: 11px;">
+          <h2 style="margin: 0 0 4px 0; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Recipient (Bill To / Counterparty)</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #000000;">All Financier Repayments (${totalRepayments})</p>
+          <p style="margin: 2px 0 0 0; color: #334155;">Payment Mode Filter: ${modeFilter} ${search ? `| Search: "${search}"` : ''}</p>
+          <p style="margin: 4px 0 0 0; font-family: monospace;"><strong>Total Settled:</strong> ${fmtCurrency(totalRepaid)}</p>
+          <p style="margin: 2px 0 0 0;"><strong>State Code:</strong> ${compState}</p>
+        </div>
+
+        <!-- Right: Supplier (From) Details -->
+        <div style="padding: 10px 12px; font-size: 11px;">
+          <h2 style="margin: 0 0 4px 0; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Supplier (From / Issuer)</h2>
+          <p style="margin: 0; font-size: 13px; font-weight: 800; color: #000000;">${compName}</p>
+          <p style="margin: 2px 0 0 0; color: #334155;">${compAddress}</p>
+          <p style="margin: 4px 0 0 0; font-family: monospace;"><strong>GSTIN/UIN:</strong> ${compGstin}</p>
+          <p style="margin: 2px 0 0 0;"><strong>State Code:</strong> ${compState}</p>
+        </div>
+      </div>
+
+      <!-- 4-Column Document Metadata Grid -->
+      <div style="border: 1px solid #000000; margin-bottom: 12px; display: grid; grid-template-columns: repeat(4, 1fr);">
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Document No.</div>
+          <div style="font-size: 12px; font-weight: 800; font-family: monospace; color: #000000; margin-top: 1px;">${ackNo}</div>
+        </div>
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Dated</div>
+          <div style="font-size: 12px; font-weight: 800; color: #000000; margin-top: 1px;">${generatedDate}</div>
+        </div>
+        <div style="border-right: 1px solid #000000; padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Payment Mode</div>
+          <div style="font-size: 12px; font-weight: 800; color: #000000; margin-top: 1px;">Bank Transfer / Cheque</div>
+        </div>
+        <div style="padding: 6px 8px;">
+          <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b;">Instrument / Ref No.</div>
+          <div style="font-size: 12px; font-weight: 800; font-family: monospace; color: #000000; margin-top: 1px;">REP-REG-${totalRepayments}</div>
+        </div>
+      </div>
+
+      <!-- Itemized Table (Purchases Bordered Table Layout) -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; border: 1px solid #000000; font-size: 11px;">
         <thead>
-          <tr style="background: #0f172a; color: #ffffff; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">
-            <th style="padding: 8px 6px; width: 32px; text-align: center;">#</th>
-            <th style="padding: 8px 10px; text-align: left;">Ref #</th>
-            <th style="padding: 8px 10px; text-align: left;">Financier</th>
-            <th style="padding: 8px 10px; text-align: left;">Repayment Date</th>
-            <th style="padding: 8px 10px; text-align: center;">Mode</th>
-            <th style="padding: 8px 10px; text-align: left;">Remarks / Notes</th>
-            <th style="padding: 8px 10px; text-align: right;">Amount Repaid (₹)</th>
+          <tr style="background: #f5f5f5; border-bottom: 1px solid #000000; text-transform: uppercase; font-size: 10px; font-weight: 700; color: #000000;">
+            <th style="border-right: 1px solid #000000; padding: 6px 4px; width: 36px; text-align: center;">SI No.</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Ref #</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Financier</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Repayment Date</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: center;">Mode</th>
+            <th style="border-right: 1px solid #000000; padding: 6px 8px; text-align: left;">Remarks / Notes</th>
+            <th style="padding: 6px 8px; text-align: right; width: 120px;">Amount Repaid (₹)</th>
           </tr>
         </thead>
         <tbody>
-          ${rowsHtml || `<tr><td colspan="7" style="text-align: center; padding: 24px; color: #94a3b8; font-style: italic;">No repayments match the current filters.</td></tr>`}
+          ${rowsHtml || `<tr><td colspan="7" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">No repayments match the current filters.</td></tr>`}
         </tbody>
         <tfoot>
-          <tr style="background: #f1f5f9; border-top: 2px solid #0f172a; font-weight: 800; font-size: 11px;">
-            <td colspan="6" style="padding: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a;">Totals (${totalRepayments} Vouchers)</td>
-            <td style="padding: 10px; text-align: right; color: #047857; font-size: 13px; font-family: monospace;">${fmtCurrency(totalRepaid)}</td>
+          <tr style="background: #f8fafc; border-top: 2px solid #000000; font-weight: 800; font-size: 11px;">
+            <td colspan="6" style="border-right: 1px solid #000000; padding: 8px 10px; text-transform: uppercase; color: #000000;">
+              Totals (${totalRepayments} Vouchers)
+            </td>
+            <td style="padding: 8px 8px; text-align: right; color: #000000; font-size: 12px; font-family: monospace;">
+              ${fmtCurrency(totalRepaid)}
+            </td>
           </tr>
         </tfoot>
       </table>
 
-      <!-- Signatures -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 36px; padding-top: 20px; border-top: 1px dashed #cbd5e1;">
-        <div style="font-size: 10px; color: #64748b; max-width: 440px;">
-          <p style="margin: 0; font-weight: 600; color: #334155;">Computer-Generated Business Record</p>
-          <p style="margin: 2px 0 0 0;">Certified register of loan settlements and repayments recorded in Vastrams database.</p>
-        </div>
-        <div style="text-align: center; width: 180px;">
-          <div style="border-bottom: 1px solid #0f172a; height: 35px; margin-bottom: 6px;"></div>
-          <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a; display: block;">Authorized Signatory</span>
-          <span style="font-size: 9px; color: #64748b;">Seal / Stamp</span>
+      <!-- Amount Chargeable in Words Box (Purchases Layout) -->
+      <div style="border: 1px solid #000000; padding: 8px 10px; margin-bottom: 12px; font-size: 11px; background: #ffffff;">
+        <span style="font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b;">Amount Chargeable (in words):</span>
+        <div style="font-weight: 800; color: #000000; margin-top: 2px; font-size: 11.5px;">
+          ${numberToWords(totalRepaid)}
         </div>
       </div>
+
+      <!-- Bottom Dual Box: Company Bank Details & Declaration on Left, Authorised Signatory on Right -->
+      <div style="border: 1px solid #000000; display: grid; grid-template-columns: 1.4fr 1fr;">
+        <div style="padding: 10px 12px; border-right: 1px solid #000000; font-size: 10px; color: #334155; line-height: 1.4;">
+          <p style="margin: 0 0 4px 0; font-weight: 700; text-transform: uppercase; font-size: 9px; color: #64748b;">Company Bank Details:</p>
+          <p style="margin: 0;"><strong>Bank Name:</strong> ${bankName}</p>
+          <p style="margin: 1px 0 0 0;"><strong>A/C No:</strong> <span style="font-family: monospace;">${bankAccount}</span></p>
+          <p style="margin: 1px 0 0 0;"><strong>Branch & IFS Code:</strong> <span style="font-family: monospace;">${bankIFSC}</span></p>
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 9px; color: #64748b;">
+            <strong>Declaration:</strong> Certified register of loan settlements and repayments recorded in Vastrams database. All particulars are true and correct.
+          </div>
+        </div>
+
+        <div style="padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; background: #fafafa;">
+          <div>
+            <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000000;">For ${compName}</span>
+          </div>
+          <div style="margin-top: 40px; text-align: center;">
+            <div style="border-bottom: 1px solid #000000; width: 140px; margin: 0 0 4px auto;"></div>
+            <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #000000;">Authorized Signatory</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   `
 }

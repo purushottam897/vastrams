@@ -465,6 +465,14 @@ export function Loans() {
                   <span className="text-xs text-slate-400 truncate max-w-[160px] sm:max-w-[240px]" title={loan.remarks}>{loan.remarks || '—'}</span>
                   <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
                     <button
+                      onClick={() => setPrintDoc({ type: 'loan', id: loan.id || loan._id })}
+                      className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                      title="Print Loan Voucher"
+                      aria-label="Print Loan Voucher"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => handleOpenPreview(loan)}
                       className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
                       title="View Details"
@@ -677,7 +685,21 @@ export function Loans() {
               {/* Footer */}
               <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3 bg-slate-50/50 dark:bg-slate-800/80">
                 {modalMode === 'preview' ? (
-                  <Button variant="secondary" onClick={() => setShowModal(false)}>Close</Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        const loanId = selectedLoan?.id || selectedLoan?._id
+                        setShowModal(false)
+                        setPrintDoc({ type: 'loan', id: loanId })
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <Printer className="w-4 h-4" />
+                      Print Document
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowModal(false)}>Close</Button>
+                  </div>
                 ) : (
                   <>
                     <Button variant="secondary" onClick={closeModal}>Cancel</Button>
@@ -693,6 +715,14 @@ export function Loans() {
       </AnimatePresence>
 
       <SaveConfirmationModal {...confirmConfig} isSaving={isSaving} />
+
+      {printDoc && (
+        <PrintPreviewModal
+          type={printDoc.type}
+          id={printDoc.id}
+          onClose={() => setPrintDoc(null)}
+        />
+      )}
     </div>
   )
 }
