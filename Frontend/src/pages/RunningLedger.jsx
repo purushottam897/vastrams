@@ -175,11 +175,14 @@ export function RunningLedger() {
           const debit = isCredit ? 0 : t.amount
           const credit = isCredit ? t.amount : 0
           runningBal = t.runningBalance !== undefined ? t.runningBalance : (runningBal + debit - credit)
+          const resolvedDate = (t.referenceType === 'Payment' && (t.paymentDate || t.date))
+            ? (t.paymentDate || t.date)
+            : t.date
           return {
             id: t._id,
             referenceId: t.referenceId,
-            rawDate: t.date,
-            date: formatDate(t.date),
+            rawDate: resolvedDate,
+            date: formatDate(resolvedDate),
             ref: t.referenceId?.toString?.()?.slice(-8)?.toUpperCase() || '—',
             type: txTypeLabel(t.type),
             rawType: t.type,

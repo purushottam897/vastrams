@@ -45,6 +45,7 @@ exports.createBill = async (req, res, next) => {
     await LedgerService.postTransaction({
       type: 'BILL_POSTED',
       amount,
+      date: billDate,
       vendorId,
       referenceType: 'Bill',
       referenceId: bill._id,
@@ -173,6 +174,7 @@ exports.updateBill = async (req, res, next) => {
           await LedgerService.postTransaction({
             type: 'BILL_POSTED',
             amount: amountDiff,
+            date: billDate,
             vendorId: targetVendorId,
             referenceType: 'Bill',
             referenceId: bill._id,
@@ -182,6 +184,7 @@ exports.updateBill = async (req, res, next) => {
           await LedgerService.postTransaction({
             type: 'BILL_PAID', // Reduces vendor outstanding balance
             amount: Math.abs(amountDiff),
+            date: billDate,
             vendorId: targetVendorId,
             referenceType: 'Bill',
             referenceId: bill._id,
@@ -195,6 +198,7 @@ exports.updateBill = async (req, res, next) => {
       await LedgerService.postTransaction({
         type: 'BILL_PAID',
         amount: oldAmount,
+        date: billDate,
         vendorId: oldVendorId,
         referenceType: 'Bill',
         referenceId: bill._id,
@@ -205,6 +209,7 @@ exports.updateBill = async (req, res, next) => {
       await LedgerService.postTransaction({
         type: 'BILL_POSTED',
         amount: newAmount,
+        date: billDate,
         vendorId: targetVendorId,
         referenceType: 'Bill',
         referenceId: bill._id,

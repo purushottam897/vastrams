@@ -87,6 +87,7 @@ exports.createPayment = async (req, res, next) => {
     await LedgerService.postTransaction({
       type: 'BILL_PAID',
       amount,
+      date: paymentDate,
       vendorId,
       referenceType: 'Payment',
       referenceId: payment._id,
@@ -318,12 +319,14 @@ exports.updatePayment = async (req, res, next) => {
     if (transaction) {
       transaction.vendorId = targetVendorId
       transaction.amount = newAmount
+      if (paymentDate) transaction.date = new Date(paymentDate)
       transaction.description = `Payment via ${payment.paymentMode} - Ref: ${payment.referenceNumber}`
       await transaction.save({ session })
     } else {
       await LedgerService.postTransaction({
         type: 'BILL_PAID',
         amount: newAmount,
+        date: paymentDate,
         vendorId: targetVendorId,
         referenceType: 'Payment',
         referenceId: payment._id,

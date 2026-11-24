@@ -35,13 +35,7 @@ const avatarColors = [
 const fmt = (v) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(v)
 
 const getStatusBadgeVariant = (status) => {
-  switch (status) {
-    case 'Paid': return 'success'
-    case 'Overdue': return 'danger'
-    case 'Partial': return 'warning'
-    case 'Due Today': return 'warning'
-    default: return 'neutral'
-  }
+  return 'success'
 }
 
 // ── Fetch state reducer ───────────────────────────────────────────────────────
@@ -140,17 +134,6 @@ export function PurchaseBills() {
         const billDateStr = b.billDate ? fromInputDate(b.billDate.split('T')[0]) : ''
         const dueDateStr = b.dueDate ? fromInputDate(b.dueDate.split('T')[0]) : ''
 
-        let mappedStatus = b.status === 'PAID' ? 'Paid' : b.status === 'PARTIALLY_PAID' ? 'Partial' : 'Pending'
-        if (mappedStatus !== 'Paid' && b.dueDate) {
-          const today = new Date(); today.setHours(0, 0, 0, 0)
-          const dueDay = new Date(b.dueDate); dueDay.setHours(0, 0, 0, 0)
-          if (dueDay < today) {
-            mappedStatus = 'Overdue'
-          } else if (dueDay.getTime() === today.getTime()) {
-            mappedStatus = 'Due Today'
-          }
-        }
-
         return {
           id: b._id,
           billNo: b.billNumber,
@@ -163,7 +146,7 @@ export function PurchaseBills() {
           paid: b.paidAmount,
           outstanding: b.outstandingAmount,
           remarks: b.remarks || '',
-          status: mappedStatus
+          status: 'Paid'
         }
       })
 
@@ -186,7 +169,11 @@ export function PurchaseBills() {
   useEffect(() => {
     const handleDataChanged = () => fetchBillsAndVendors()
     window.addEventListener('api-data-changed', handleDataChanged)
-    return () => window.removeEventListener('api-data-changed', handleDataChanged)
+    window.addEventListener('vastrams:data-restored', handleDataChanged)
+    return () => {
+      window.removeEventListener('api-data-changed', handleDataChanged)
+      window.removeEventListener('vastrams:data-restored', handleDataChanged)
+    }
   }, [fetchBillsAndVendors])
 
   const vendorListOptions = useMemo(() => {
@@ -330,8 +317,7 @@ export function PurchaseBills() {
   })
 
   const totalBilled = useMemo(() => bills.reduce((s, b) => s + (b.amount || 0), 0), [bills])
-  const unpaidCount = useMemo(() => bills.filter(b => b.status === 'Pending' || b.status === 'Partial').length, [bills])
-  const overdueCount = useMemo(() => bills.filter(b => b.status === 'Overdue').length, [bills])
+  const paidCount = useMemo(() => bills.filter(b => b.status === 'Paid').length, [bills])
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
@@ -358,20 +344,20 @@ export function PurchaseBills() {
           iconBg="bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
         />
         <KpiCard
-          title="Unpaid Bills"
-          value={loading ? <Skeleton className="h-8 w-16" /> : String(unpaidCount)}
-          subtitle="Pending / Partial"
-          icon={Clock}
-          iconColor="text-amber-600 dark:text-amber-400"
-          iconBg="bg-amber-50 dark:bg-amber-950/40 border-amber-100 dark:border-amber-900/40"
+          title="Paid Invoices"
+          value={loading ? <Skeleton className="h-8 w-16" /> : String(paidCount)}
+          subtitle="All purchases paid"
+          icon={CheckCircle}
+          iconColor="text-emerald-600 dark:text-emerald-400"
+          iconBg="bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900/40"
         />
         <KpiCard
-          title="Overdue Bills"
-          value={loading ? <Skeleton className="h-8 w-16" /> : String(overdueCount)}
-          subtitle="Past payment deadline"
-          icon={AlertCircle}
-          iconColor="text-rose-600 dark:text-rose-400"
-          iconBg="bg-rose-50 dark:bg-rose-950/40 border-rose-100 dark:border-rose-900/40"
+          title="Payment Status"
+          value={loading ? <Skeleton className="h-8 w-16" /> : "Paid"}
+          subtitle="Settlement confirmed"
+          icon={CheckCircle}
+          iconColor="text-emerald-600 dark:text-emerald-400"
+          iconBg="bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900/40"
         />
         <KpiCard
           title="Total Billed"
@@ -397,11 +383,7 @@ export function PurchaseBills() {
             onChange={setStatusFilter}
             options={[
               { value: 'ALL', label: 'All Statuses' },
-              { value: 'Paid', label: 'Paid' },
-              { value: 'Pending', label: 'Pending' },
-              { value: 'Partial', label: 'Partially Paid' },
-              { value: 'Due Today', label: 'Due Today' },
-              { value: 'Overdue', label: 'Overdue' }
+              { value: 'Paid', label: 'Paid' }
             ]}
           />
         </div>

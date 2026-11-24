@@ -13,11 +13,13 @@ class LedgerService {
    * @param {string} params.referenceType - Source model name ('Bill', 'Payment', etc.)
    * @param {string} params.referenceId - Source document ID
    * @param {string} [params.description] - Summary narration text
+   * @param {Date|string} [params.date] - Optional explicit transaction date (e.g. paymentDate or billDate)
    * @param {object} [session] - Optional transaction session
    */
   async postTransaction({
     type,
     amount,
+    date = null,
     vendorId = null,
     financierId = null,
     referenceType,
@@ -67,7 +69,7 @@ class LedgerService {
     }
 
     // Post to unified transaction log
-    const tx = new Transaction({
+    const txData = {
       type,
       amount,
       runningBalance,
@@ -76,7 +78,12 @@ class LedgerService {
       referenceType,
       referenceId,
       description
-    })
+    }
+    if (date) {
+      txData.date = new Date(date)
+    }
+
+    const tx = new Transaction(txData)
 
     await tx.save({ session })
     return tx
