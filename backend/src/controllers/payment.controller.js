@@ -30,7 +30,7 @@ exports.createPayment = async (req, res, next) => {
   session.startTransaction()
 
   try {
-    const { vendorId, amount, paymentDate, paymentMode, chequeNumber, referenceNumber } = req.body
+    const { vendorId, amount, paymentDate, paymentMode, chequeNumber, chequeIssueDate, chequeDate, withdrawalDate, chequeWithdrawalDate, referenceNumber } = req.body
     const targetMode = normalizePaymentMode(paymentMode)
 
     // Validate Vendor
@@ -55,16 +55,21 @@ exports.createPayment = async (req, res, next) => {
         return res.status(400).json({ success: false, message: 'Cheque number is required for CHEQUE payment mode.' })
       }
 
-      // Create a pending Issued Cheque in Registry
+      const issueDate = chequeIssueDate || chequeDate || paymentDate || new Date()
+      const finalWithdrawalDate = (chequeWithdrawalDate || withdrawalDate) ? new Date(chequeWithdrawalDate || withdrawalDate) : null
+
+      // Create an Issued Cheque in Registry
       const cheque = new Cheque({
         chequeNumber,
         type: 'ISSUED_VENDOR',
         partyName: vendor.name,
         vendorId,
         amount,
-        chequeDate: paymentDate || new Date(),
+        chequeDate: issueDate,
+        issueDate: issueDate,
+        withdrawalDate: finalWithdrawalDate,
         bankName: vendor.bankName || '',
-        status: 'PENDING'
+        status: finalWithdrawalDate ? 'CLEARED' : 'PENDING'
       })
       await cheque.save({ session })
       chequeId = cheque._id
@@ -84,10 +89,13 @@ exports.createPayment = async (req, res, next) => {
     await payment.save({ session })
 
     // 4. Update the Unified Transaction Ledger (recomputes vendor.outstandingBalance internally)
+    const txDate = (targetMode === 'CHEQUE' && (chequeWithdrawalDate || withdrawalDate))
+      ? new Date(chequeWithdrawalDate || withdrawalDate)
+      : paymentDate
     await LedgerService.postTransaction({
       type: 'BILL_PAID',
       amount,
-      date: paymentDate,
+      date: txDate,
       vendorId,
       referenceType: 'Payment',
       referenceId: payment._id,
@@ -307,6 +315,31 @@ exports.updatePayment = async (req, res, next) => {
     if (refNum) payment.referenceNumber = refNum
     payment.allocations = allocations
 
+    // Update cheque details if cheque mode
+    let effectiveTxDate = paymentDate
+    if (targetMode === 'CHEQUE' && chequeId) {
+      const chq = await Cheque.findById(chequeId).session(session)
+      if (chq) {
+        if (refNum) chq.chequeNumber = refNum
+        const issueDate = req.body.chequeIssueDate || req.body.chequeDate || paymentDate
+        if (issueDate) {
+          chq.issueDate = new Date(issueDate)
+          chq.chequeDate = new Date(issueDate)
+        }
+        const withdrawal = req.body.chequeWithdrawalDate !== undefined ? req.body.chequeWithdrawalDate : req.body.withdrawalDate
+        if (withdrawal !== undefined) {
+          chq.withdrawalDate = withdrawal ? new Date(withdrawal) : null
+          if (chq.withdrawalDate && chq.status === 'PENDING') {
+            chq.status = 'CLEARED'
+          }
+        }
+        await chq.save({ session })
+        if (chq.withdrawalDate) {
+          effectiveTxDate = chq.withdrawalDate
+        }
+      }
+    }
+
     await payment.save({ session })
 
     // 9. Update Transaction Ledger
@@ -319,14 +352,14 @@ exports.updatePayment = async (req, res, next) => {
     if (transaction) {
       transaction.vendorId = targetVendorId
       transaction.amount = newAmount
-      if (paymentDate) transaction.date = new Date(paymentDate)
+      if (effectiveTxDate) transaction.date = new Date(effectiveTxDate)
       transaction.description = `Payment via ${payment.paymentMode} - Ref: ${payment.referenceNumber}`
       await transaction.save({ session })
     } else {
       await LedgerService.postTransaction({
         type: 'BILL_PAID',
         amount: newAmount,
-        date: paymentDate,
+        date: effectiveTxDate,
         vendorId: targetVendorId,
         referenceType: 'Payment',
         referenceId: payment._id,

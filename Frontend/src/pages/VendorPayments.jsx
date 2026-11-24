@@ -75,6 +75,11 @@ export function VendorPayments() {
     date: getTodayFormatted(),
     amount: '',
     mode: 'Bank Transfer',
+    refNum: '',
+    chequeNumber: '',
+    chequeIssueDate: getTodayFormatted(),
+    chequeWithdrawalDate: '',
+    chequeDate: getTodayFormatted(),
     remarks: ''
   }
   const [form, setForm] = useState(emptyForm)
@@ -89,7 +94,10 @@ export function VendorPayments() {
       (form.date || '') !== (initialFormSnapshot.date || '') ||
       (form.amount || '') !== (initialFormSnapshot.amount || '') ||
       (form.mode || '') !== (initialFormSnapshot.mode || '') ||
-      (form.remarks || '') !== (initialFormSnapshot.remarks || '')
+      (form.remarks || '') !== (initialFormSnapshot.remarks || '') ||
+      (form.chequeNumber || '') !== (initialFormSnapshot.chequeNumber || '') ||
+      (form.chequeIssueDate || '') !== (initialFormSnapshot.chequeIssueDate || '') ||
+      (form.chequeWithdrawalDate || '') !== (initialFormSnapshot.chequeWithdrawalDate || '')
     )
   }, [showModal, modalMode, form, initialFormSnapshot])
 
@@ -149,7 +157,9 @@ export function VendorPayments() {
           chequeId: p.chequeId?._id || p.chequeId || null,
           chequeNumber: p.chequeId?.chequeNumber || p.chequeNumber || '',
           chequeNo: p.chequeId?.chequeNumber || p.chequeNumber || '',
-          chequeDate: p.chequeId?.chequeDate ? fromInputDate(toInputDate(p.chequeId.chequeDate)) : '',
+          chequeDate: (p.chequeId?.issueDate || p.chequeId?.chequeDate) ? fromInputDate(toInputDate(p.chequeId.issueDate || p.chequeId.chequeDate)) : '',
+          chequeIssueDate: (p.chequeId?.issueDate || p.chequeId?.chequeDate) ? fromInputDate(toInputDate(p.chequeId.issueDate || p.chequeId.chequeDate)) : '',
+          chequeWithdrawalDate: p.chequeId?.withdrawalDate ? fromInputDate(toInputDate(p.chequeId.withdrawalDate)) : '',
           remarks: p.remarks || `Payment Ref: ${p.referenceNumber}`,
           allocations: mappedAllocations
         }
@@ -243,7 +253,9 @@ export function VendorPayments() {
       referenceNumber: pay.referenceNumber || pay.refNum || pay.ref || '',
       chequeNumber: pay.chequeNumber || pay.chequeNo || '',
       chequeNo: pay.chequeNumber || pay.chequeNo || '',
-      chequeDate: pay.chequeDate || pay.date || getTodayFormatted(),
+      chequeIssueDate: pay.chequeIssueDate || pay.chequeDate || pay.date || getTodayFormatted(),
+      chequeWithdrawalDate: pay.chequeWithdrawalDate || '',
+      chequeDate: pay.chequeIssueDate || pay.chequeDate || pay.date || getTodayFormatted(),
       remarks: pay.remarks || ''
     }
     setSelectedPay(pay)
@@ -277,6 +289,9 @@ export function VendorPayments() {
         date: 'Payment Date',
         amount: 'Payment Amount',
         mode: 'Payment Mode',
+        chequeNumber: 'Cheque Number',
+        chequeIssueDate: 'Cheque Issue Date',
+        chequeWithdrawalDate: 'Cheque Withdrawal Date',
         remarks: 'Remarks'
       },
       onSaveApi: async () => {
@@ -303,6 +318,10 @@ export function VendorPayments() {
           paymentMode: mappedPaymentMode,
           referenceNumber: form.refNum || form.referenceNumber || selectedPay?.referenceNumber || selectedPay?.ref || ('TXN-' + String(Math.floor(100 + Math.random() * 900))),
           chequeNumber: form.mode === 'Cheque' ? (form.chequeNumber || form.chequeNo || selectedPay?.chequeNumber || String(Math.floor(100000 + Math.random() * 900000))) : undefined,
+          chequeDate: form.mode === 'Cheque' ? toInputDate(form.chequeIssueDate || form.chequeDate || form.date) : undefined,
+          chequeIssueDate: form.mode === 'Cheque' ? toInputDate(form.chequeIssueDate || form.chequeDate || form.date) : undefined,
+          chequeWithdrawalDate: (form.mode === 'Cheque' && form.chequeWithdrawalDate) ? toInputDate(form.chequeWithdrawalDate) : undefined,
+          withdrawalDate: (form.mode === 'Cheque' && form.chequeWithdrawalDate) ? toInputDate(form.chequeWithdrawalDate) : undefined,
           remarks: form.remarks
         }
 
@@ -782,6 +801,24 @@ export function VendorPayments() {
                         <span className="text-slate-400 block mb-0.5">Payment Date</span>
                         <span className="font-medium text-slate-800 dark:text-slate-200">{selectedPay?.date}</span>
                       </div>
+                      {(selectedPay?.mode === 'Cheque' || selectedPay?.chequeNumber) && (
+                        <>
+                          <div>
+                            <span className="text-slate-400 block mb-0.5">Cheque Number</span>
+                            <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{selectedPay.chequeNumber || '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block mb-0.5">Withdrawal Date</span>
+                            <span className="font-medium text-slate-800 dark:text-slate-200">
+                              {selectedPay.chequeWithdrawalDate ? (
+                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{selectedPay.chequeWithdrawalDate}</span>
+                              ) : (
+                                <span className="text-amber-500 font-normal">Pending (Not Withdrawn)</span>
+                              )}
+                            </span>
+                          </div>
+                        </>
+                      )}
                       <div className="col-span-2 pt-2 border-t border-slate-100 dark:border-slate-700/60">
                         <span className="text-slate-400 block mb-0.5">Remarks / Ref</span>
                         <span className="text-slate-700 dark:text-slate-300">{selectedPay?.remarks || '—'}</span>
@@ -882,27 +919,51 @@ export function VendorPayments() {
 
                     {/* Conditional Mode Inputs */}
                     {form.mode === 'Cheque' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            Cheque Number <span className="text-rose-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="123456"
-                            value={form.chequeNumber || ''}
-                            onChange={e => setForm({ ...form, chequeNumber: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                            className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                          />
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                              Cheque Number <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="123456"
+                              value={form.chequeNumber || ''}
+                              onChange={e => setForm({ ...form, chequeNumber: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                              className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                              Cheque Issue Date
+                            </label>
+                            <CustomDatePicker
+                              value={form.chequeIssueDate || form.chequeDate || form.date}
+                              onChange={val => setForm({ ...form, chequeIssueDate: val, chequeDate: val })}
+                            />
+                          </div>
                         </div>
+
                         <div>
-                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            Cheque Date
-                          </label>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              Cheque Withdrawal Date
+                            </label>
+                            {form.chequeWithdrawalDate && (
+                              <button
+                                type="button"
+                                onClick={() => setForm({ ...form, chequeWithdrawalDate: '' })}
+                                className="text-[10px] text-rose-500 hover:text-rose-600 underline font-normal"
+                              >
+                                Clear (Pending)
+                              </button>
+                            )}
+                          </div>
                           <CustomDatePicker
-                            value={form.chequeDate || form.date}
-                            onChange={val => setForm({ ...form, chequeDate: val })}
+                            value={form.chequeWithdrawalDate}
+                            onChange={val => setForm({ ...form, chequeWithdrawalDate: val })}
+                            placeholder="DD/MM/YYYY (Optional - when cleared)"
                           />
                         </div>
                       </div>

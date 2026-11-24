@@ -175,21 +175,45 @@ export function RunningLedger() {
           const debit = isCredit ? 0 : t.amount
           const credit = isCredit ? t.amount : 0
           runningBal = t.runningBalance !== undefined ? t.runningBalance : (runningBal + debit - credit)
-          const resolvedDate = (t.referenceType === 'Payment' && (t.paymentDate || t.date))
-            ? (t.paymentDate || t.date)
-            : t.date
+          
+          // For cheque payments: use Cheque Withdrawal Date as transaction date when available
+          let resolvedDate = t.date
+          if (t.isCheque && t.withdrawalDate) {
+            resolvedDate = t.withdrawalDate
+          } else if (t.referenceType === 'Payment' && (t.paymentDate || t.date)) {
+            resolvedDate = t.paymentDate || t.date
+          }
+
+          let desc = t.description || '—'
+          if (t.isCheque) {
+            if (t.withdrawalDate) {
+              if (!desc.includes('Withdrawn')) {
+                desc += ` (Withdrawn: ${formatDate(t.withdrawalDate)})`
+              }
+            } else {
+              if (!desc.includes('Not Withdrawn') && !desc.includes('Pending')) {
+                desc += ` (Cheque Pending - Not Withdrawn)`
+              }
+            }
+          }
+
           return {
             id: t._id,
             referenceId: t.referenceId,
             rawDate: resolvedDate,
             date: formatDate(resolvedDate),
-            ref: t.referenceId?.toString?.()?.slice(-8)?.toUpperCase() || '—',
+            ref: t.chequeNumber ? `CHQ-${t.chequeNumber}` : (t.referenceId?.toString?.()?.slice(-8)?.toUpperCase() || '—'),
             type: txTypeLabel(t.type),
             rawType: t.type,
-            description: t.description || '—',
+            description: desc,
             debit,
             credit,
             balance: runningBal,
+            isCheque: Boolean(t.isCheque),
+            isWithdrawn: Boolean(t.withdrawalDate),
+            withdrawalDate: t.withdrawalDate || null,
+            chequeIssueDate: t.chequeIssueDate || null,
+            chequeStatus: t.chequeStatus || null
           }
         })
         if (!controller.signal.aborted) {

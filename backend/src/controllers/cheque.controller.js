@@ -10,17 +10,21 @@ const LedgerService = require('../services/ledger.service')
 
 exports.createCheque = async (req, res, next) => {
   try {
-    const { chequeNumber, type, partyName, amount, chequeDate, vendorId, financierId, bankName } = req.body
+    const { chequeNumber, type, partyName, amount, chequeDate, issueDate, withdrawalDate, vendorId, financierId, bankName, status } = req.body
+    const finalIssueDate = issueDate || chequeDate || new Date()
+    const finalWithdrawalDate = withdrawalDate ? new Date(withdrawalDate) : null
     const cheque = new Cheque({
       chequeNumber,
       type: type || 'ISSUED_VENDOR',
       partyName,
       amount,
-      chequeDate,
+      chequeDate: finalIssueDate,
+      issueDate: finalIssueDate,
+      withdrawalDate: finalWithdrawalDate,
       bankName: bankName || '',
       vendorId: vendorId || null,
       financierId: financierId || null,
-      status: 'PENDING'
+      status: status || (finalWithdrawalDate ? 'CLEARED' : 'PENDING')
     })
     await cheque.save()
     broadcastEvent('data-changed', { entity: 'cheque', action: 'create' })
@@ -55,7 +59,7 @@ exports.updateChequeStatus = async (req, res, next) => {
 
   try {
     const { id } = req.params
-    const { status, bounceReason, bounceDate } = req.body
+    const { status, bounceReason, bounceDate, withdrawalDate } = req.body
 
     const cheque = await Cheque.findById(id).session(session)
     if (!cheque) {
@@ -66,7 +70,7 @@ exports.updateChequeStatus = async (req, res, next) => {
 
     const previousStatus = cheque.status
 
-    if (previousStatus === status) {
+    if (previousStatus === status && withdrawalDate === undefined) {
       await session.abortTransaction()
       session.endSession()
       return res.status(400).json({ success: false, message: `Cheque status is already ${status}` })
@@ -78,7 +82,28 @@ exports.updateChequeStatus = async (req, res, next) => {
       cheque.bounceDate = bounceDate || new Date()
       cheque.bounceReason = bounceReason || 'Insufficient Funds'
     }
+    if (withdrawalDate !== undefined) {
+      cheque.withdrawalDate = withdrawalDate ? new Date(withdrawalDate) : null
+    } else if (status === 'CLEARED' && !cheque.withdrawalDate) {
+      cheque.withdrawalDate = new Date()
+    }
     await cheque.save({ session })
+
+    // Sync transaction date in ledger if cheque was cleared with withdrawal date
+    if (cheque.withdrawalDate && cheque.type === 'ISSUED_VENDOR') {
+      const payment = await Payment.findOne({ chequeId: cheque._id }).session(session)
+      if (payment) {
+        const transaction = await Transaction.findOne({
+          referenceType: 'Payment',
+          referenceId: payment._id,
+          isDeleted: false
+        }).session(session)
+        if (transaction) {
+          transaction.date = new Date(cheque.withdrawalDate)
+          await transaction.save({ session })
+        }
+      }
+    }
 
     // If cheque transitions to BOUNCED or CANCELLED from PENDING, trigger balance/ledger reversal
     if ((status === 'BOUNCED' || status === 'CANCELLED') && previousStatus === 'PENDING') {
@@ -183,7 +208,7 @@ exports.updateCheque = async (req, res, next) => {
 
   try {
     const { id } = req.params
-    const { chequeNumber, type, partyName, amount, chequeDate, vendorId, financierId, bankName, status, bounceReason, bounceDate } = req.body
+    const { chequeNumber, type, partyName, amount, chequeDate, issueDate, withdrawalDate, vendorId, financierId, bankName, status, bounceReason, bounceDate } = req.body
 
     const cheque = await Cheque.findById(id).session(session)
     if (!cheque) {
@@ -193,7 +218,7 @@ exports.updateCheque = async (req, res, next) => {
     }
 
     const previousStatus = cheque.status
-    const targetStatus = status || previousStatus
+    let targetStatus = status || previousStatus
 
     // If cheque transitions to BOUNCED or CANCELLED from PENDING, trigger balance/ledger reversal
     if ((targetStatus === 'BOUNCED' || targetStatus === 'CANCELLED') && previousStatus === 'PENDING') {
@@ -258,7 +283,19 @@ exports.updateCheque = async (req, res, next) => {
     if (type) cheque.type = type
     if (partyName) cheque.partyName = partyName
     if (amount !== undefined) cheque.amount = Number(amount)
-    if (chequeDate) cheque.chequeDate = chequeDate
+    if (issueDate) {
+      cheque.issueDate = new Date(issueDate)
+      cheque.chequeDate = new Date(issueDate)
+    } else if (chequeDate) {
+      cheque.chequeDate = new Date(chequeDate)
+      cheque.issueDate = new Date(chequeDate)
+    }
+    if (withdrawalDate !== undefined) {
+      cheque.withdrawalDate = withdrawalDate ? new Date(withdrawalDate) : null
+      if (cheque.withdrawalDate && targetStatus === 'PENDING') {
+        targetStatus = 'CLEARED'
+      }
+    }
     if (vendorId !== undefined) cheque.vendorId = vendorId || null
     if (financierId !== undefined) cheque.financierId = financierId || null
     if (bankName !== undefined) cheque.bankName = bankName
@@ -269,6 +306,27 @@ exports.updateCheque = async (req, res, next) => {
     }
 
     await cheque.save({ session })
+
+    // Sync transaction date in ledger if cheque has withdrawal date or issue date
+    if (cheque.type === 'ISSUED_VENDOR') {
+      const payment = await Payment.findOne({ chequeId: cheque._id }).session(session)
+      if (payment) {
+        const transaction = await Transaction.findOne({
+          referenceType: 'Payment',
+          referenceId: payment._id,
+          isDeleted: false
+        }).session(session)
+        if (transaction) {
+          if (cheque.withdrawalDate) {
+            transaction.date = new Date(cheque.withdrawalDate)
+          } else if (cheque.issueDate || cheque.chequeDate) {
+            transaction.date = new Date(cheque.issueDate || cheque.chequeDate)
+          }
+          await transaction.save({ session })
+        }
+      }
+    }
+
     await session.commitTransaction()
     session.endSession()
 

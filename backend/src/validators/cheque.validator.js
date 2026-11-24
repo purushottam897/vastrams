@@ -30,10 +30,25 @@ exports.validateCheque = [
     .withMessage('Amount must be a positive number'),
 
   body('chequeDate')
-    .notEmpty()
-    .withMessage('Cheque date is required')
+    .custom((val, { req }) => {
+      const dateVal = val || req.body.issueDate
+      if (!dateVal) throw new Error('Cheque date is required')
+      if (!/^\d{4}-\d{2}-\d{2}/.test(dateVal) && isNaN(Date.parse(dateVal))) {
+        throw new Error('Invalid cheque date format')
+      }
+      if (!req.body.chequeDate) req.body.chequeDate = dateVal
+      return true
+    }),
+
+  body('issueDate')
+    .optional({ checkFalsy: true })
     .isISO8601()
-    .withMessage('Invalid cheque date format'),
+    .withMessage('Invalid issue date format'),
+
+  body('withdrawalDate')
+    .optional({ checkFalsy: true })
+    .isISO8601()
+    .withMessage('Invalid withdrawal date format'),
 
   body('vendorId')
     .optional({ checkFalsy: true })

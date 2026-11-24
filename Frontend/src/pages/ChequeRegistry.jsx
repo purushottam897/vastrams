@@ -108,6 +108,8 @@ export function ChequeRegistry() {
 
   const emptyForm = {
     chequeNo: '',
+    issueDate: getTodayFormatted(),
+    withdrawalDate: '',
     date: getTodayFormatted(),
     amount: '',
     bank: '',
@@ -126,6 +128,8 @@ export function ChequeRegistry() {
     if (!showModal || modalMode === 'preview') return false
     return (
       (form.chequeNo || '') !== (initialFormSnapshot.chequeNo || '') ||
+      (form.issueDate || '') !== (initialFormSnapshot.issueDate || '') ||
+      (form.withdrawalDate || '') !== (initialFormSnapshot.withdrawalDate || '') ||
       (form.date || '') !== (initialFormSnapshot.date || '') ||
       (form.amount || '') !== (initialFormSnapshot.amount || '') ||
       (form.bank || '') !== (initialFormSnapshot.bank || '') ||
@@ -161,21 +165,31 @@ export function ChequeRegistry() {
         api.get('/settings/profile', { signal })
       ])
 
-      const mapped = chequesData.map((c, idx) => ({
-        id: c._id,
-        chequeNo: c.chequeNumber,
-        date: c.chequeDate ? fromInputDate(c.chequeDate.split('T')[0]) : '—',
-        rawDate: c.chequeDate ? c.chequeDate.split('T')[0] : '',
-        amount: c.amount || 0,
-        bank: c.bankName || c.vendorId?.bankName || c.vendorId?.bank || c.financierId?.bank || '—',
-        partyType: c.type === 'ISSUED_VENDOR' ? 'Vendor' : 'Financier',
-        partyId: c.vendorId?._id || c.financierId?._id || '',
-        party: c.partyName || (c.vendorId?.name) || (c.financierId?.name) || '—',
-        status: BE_STATUS_MAP[c.status] || 'Pending',
-        rawStatus: c.status || 'PENDING',
-        remarks: c.bounceReason || '—',
-        idx,
-      }))
+      const mapped = chequesData.map((c, idx) => {
+        const issueDateRaw = c.issueDate || c.chequeDate
+        const issueDateStr = issueDateRaw ? fromInputDate(issueDateRaw.split('T')[0]) : '—'
+        const withdrawalDateRaw = c.withdrawalDate
+        const withdrawalDateStr = withdrawalDateRaw ? fromInputDate(withdrawalDateRaw.split('T')[0]) : ''
+        return {
+          id: c._id,
+          chequeNo: c.chequeNumber,
+          issueDate: issueDateStr,
+          rawIssueDate: issueDateRaw ? issueDateRaw.split('T')[0] : '',
+          withdrawalDate: withdrawalDateStr,
+          rawWithdrawalDate: withdrawalDateRaw ? withdrawalDateRaw.split('T')[0] : '',
+          date: issueDateStr,
+          rawDate: issueDateRaw ? issueDateRaw.split('T')[0] : '',
+          amount: c.amount || 0,
+          bank: c.bankName || c.vendorId?.bankName || c.vendorId?.bank || c.financierId?.bank || '—',
+          partyType: c.type === 'ISSUED_VENDOR' ? 'Vendor' : 'Financier',
+          partyId: c.vendorId?._id || c.financierId?._id || '',
+          party: c.partyName || (c.vendorId?.name) || (c.financierId?.name) || '—',
+          status: BE_STATUS_MAP[c.status] || 'Pending',
+          rawStatus: c.status || 'PENDING',
+          remarks: c.bounceReason || '—',
+          idx,
+        }
+      })
 
       if (!signal || !signal.aborted) {
         setCheques(mapped)
@@ -229,6 +243,9 @@ export function ChequeRegistry() {
   const handleOpenEdit = (cheque) => {
     const editObj = {
       ...cheque,
+      issueDate: cheque.issueDate && cheque.issueDate !== '—' ? cheque.issueDate : (cheque.date || getTodayFormatted()),
+      withdrawalDate: cheque.withdrawalDate || '',
+      date: cheque.issueDate && cheque.issueDate !== '—' ? cheque.issueDate : (cheque.date || getTodayFormatted()),
       partyType: cheque.partyType || 'Vendor',
       status: cheque.status || 'Pending'
     }
@@ -257,7 +274,8 @@ export function ChequeRegistry() {
       currentValues: form,
       labelMap: {
         chequeNo: 'Cheque Number',
-        date: 'Cheque Date',
+        issueDate: 'Cheque Issue Date',
+        withdrawalDate: 'Cheque Withdrawal Date',
         amount: 'Amount',
         bank: 'Bank Name',
         partyType: 'Party Type',
@@ -266,13 +284,17 @@ export function ChequeRegistry() {
         remarks: 'Remarks / Bounce Reason'
       },
       onSaveApi: async () => {
+        const issueDateVal = toInputDate(form.issueDate || form.date)
+        const withdrawalDateVal = form.withdrawalDate ? toInputDate(form.withdrawalDate) : null
         const payload = {
           chequeNumber: form.chequeNo,
-          chequeDate: toInputDate(form.date),
+          chequeDate: issueDateVal,
+          issueDate: issueDateVal,
+          withdrawalDate: withdrawalDateVal,
           amount: Number(form.amount) || 0,
           bankName: form.bank,
           type: BE_TYPE_MAP[form.partyType] || 'ISSUED_VENDOR',
-          status: modalMode === 'add' ? 'PENDING' : (FE_STATUS_MAP[form.status] || 'PENDING'),
+          status: withdrawalDateVal ? 'CLEARED' : (modalMode === 'add' ? 'PENDING' : (FE_STATUS_MAP[form.status] || 'PENDING')),
           bounceReason: form.remarks,
           partyName: form.party,
           vendorId: form.partyType === 'Vendor' ? selectedPartyId : undefined,
@@ -522,7 +544,9 @@ export function ChequeRegistry() {
                       <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400 block">
                         Cheque #{c.chequeNo}
                       </span>
-                      <span className="text-xs text-slate-500 font-medium">{c.date}</span>
+                      <span className="text-xs text-slate-500 font-medium">
+                        Issued: {c.issueDate || c.date} {c.withdrawalDate ? `· Withdrawn: ${c.withdrawalDate}` : '· Not Withdrawn'}
+                      </span>
                     </div>
                   </div>
 
@@ -587,7 +611,8 @@ export function ChequeRegistry() {
                 <thead className="bg-slate-50/90 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-700 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <tr>
                     <th className="px-6 py-3.5">Cheque No.</th>
-                    <th className="px-6 py-3.5">Cheque Date</th>
+                    <th className="px-6 py-3.5">Issue Date</th>
+                    <th className="px-6 py-3.5">Withdrawal Date</th>
                     <th className="px-6 py-3.5 text-right">Amount</th>
                     <th className="px-6 py-3.5">Bank Name</th>
                     <th className="px-6 py-3.5">Party Type</th>
@@ -606,7 +631,14 @@ export function ChequeRegistry() {
                       <td className="px-6 py-4 font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                         {c.chequeNo}
                       </td>
-                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">{c.date}</td>
+                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">{c.issueDate || c.date}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {c.withdrawalDate ? (
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">{c.withdrawalDate}</span>
+                        ) : (
+                          <span className="text-slate-400 italic">Not Withdrawn</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-slate-100 tabular-nums whitespace-nowrap">
                         ₹{fmt(c.amount)}
                       </td>
@@ -705,14 +737,24 @@ export function ChequeRegistry() {
                         <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{selectedCheque?.chequeNo}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block mb-0.5">Cheque Date</span>
-                        <span className="font-medium text-slate-800 dark:text-slate-200">{selectedCheque?.date}</span>
-                      </div>
-                      <div>
                         <span className="text-slate-400 block mb-0.5">Cheque Amount</span>
                         <span className="font-bold text-slate-900 dark:text-slate-100 tabular-nums">₹{fmt(selectedCheque?.amount || 0)}</span>
                       </div>
                       <div>
+                        <span className="text-slate-400 block mb-0.5">Issue Date</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{selectedCheque?.issueDate || selectedCheque?.date || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">Withdrawal Date</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-200">
+                          {selectedCheque?.withdrawalDate ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{selectedCheque.withdrawalDate}</span>
+                          ) : (
+                            <span className="text-amber-500 font-normal">Pending (Not Withdrawn)</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="col-span-2">
                         <span className="text-slate-400 block mb-0.5">Drawee Bank</span>
                         <span className="font-medium text-slate-800 dark:text-slate-200">{selectedCheque?.bank || '—'}</span>
                       </div>
@@ -791,14 +833,38 @@ export function ChequeRegistry() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Cheque Date <span className="text-rose-500">*</span>
+                          Cheque Issue Date <span className="text-rose-500">*</span>
                         </label>
                         <CustomDatePicker
-                          value={form.date}
-                          onChange={d => setForm({...form, date: d})}
+                          value={form.issueDate || form.date}
+                          onChange={d => setForm({...form, issueDate: d, date: d})}
                         />
                       </div>
                       <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Withdrawal Date
+                          </label>
+                          {form.withdrawalDate && (
+                            <button
+                              type="button"
+                              onClick={() => setForm({...form, withdrawalDate: ''})}
+                              className="text-[10px] text-rose-500 hover:text-rose-600 underline font-normal"
+                            >
+                              Clear (Pending)
+                            </button>
+                          )}
+                        </div>
+                        <CustomDatePicker
+                          value={form.withdrawalDate}
+                          onChange={d => setForm({...form, withdrawalDate: d})}
+                          placeholder="DD/MM/YYYY (Optional)"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="sm:col-span-2">
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Drawee Bank Name</label>
                         <input
                           type="text"

@@ -50,6 +50,14 @@ const ChequeSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  issueDate: {
+    type: Date,
+    default: null
+  },
+  withdrawalDate: {
+    type: Date,
+    default: null
+  },
   bankName: {
     type: String,
     trim: true,
@@ -77,6 +85,19 @@ const ChequeSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+})
+
+ChequeSchema.pre('save', function(next) {
+  if (!this.issueDate && this.chequeDate) {
+    this.issueDate = this.chequeDate
+  }
+  if (!this.chequeDate && this.issueDate) {
+    this.chequeDate = this.issueDate
+  }
+  if (this.withdrawalDate && this.status === 'PENDING') {
+    this.status = 'CLEARED'
+  }
+  next()
 })
 
 module.exports = mongoose.model('Cheque', ChequeSchema)
