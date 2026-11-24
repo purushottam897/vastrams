@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useReducer, useCallback, useMemo } from 'react'
-import { Plus, X, Edit2, Eye, Trash2, Landmark, Coins, TrendingUp, Percent } from 'lucide-react'
+import { Plus, X, Edit2, Eye, Trash2, Landmark, Coins, TrendingUp, Percent, Printer } from 'lucide-react'
 import PrintPreviewModal from '../components/PrintPreviewModal'
 import { toInputDate, fromInputDate, getTodayFormatted, getDefaultMaturityDate, formatDateDisplay } from '../utils/date'
 import DropdownSelect from '../components/ui/DropdownSelect'
@@ -21,15 +21,19 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Skeleton, SkeletonCard } from '../components/ui/Skeleton'
 import { usePagination } from '../hooks/usePagination'
 import Pagination from '../components/ui/Pagination'
+import { useCompanyProfile } from '../context/ProfileContext'
+import { downloadLoansRegisterPdf } from '../utils/financePdf'
 
 const fmt = (v) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(v)
 
 export function Loans() {
   const toast = useToast()
   const confirm = useConfirm()
+  const { companyProfile } = useCompanyProfile()
   const [loans, setLoans] = useState([])
   const [financiers, setFinanciers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [error, setError] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [modalMode, setModalMode] = useState('add') // 'add' | 'edit' | 'preview'
@@ -147,7 +151,11 @@ export function Loans() {
   useEffect(() => {
     const handleDataChanged = () => fetchLoansAndFinanciers()
     window.addEventListener('api-data-changed', handleDataChanged)
-    return () => window.removeEventListener('api-data-changed', handleDataChanged)
+    window.addEventListener('vastrams:data-restored', handleDataChanged)
+    return () => {
+      window.removeEventListener('api-data-changed', handleDataChanged)
+      window.removeEventListener('vastrams:data-restored', handleDataChanged)
+    }
   }, [])
 
   const handleOpenAdd = () => {
@@ -289,6 +297,23 @@ export function Loans() {
     containerRef: cardContainerRef
   })
 
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloadingPdf(true)
+      await downloadLoansRegisterPdf({
+        loans: sortedLoans,
+        companyProfile,
+        sortBy
+      })
+      toast('Loans register PDF downloaded successfully', 'success')
+    } catch (err) {
+      console.error('Failed to download PDF:', err)
+      toast('Failed to generate PDF. Please try again.', 'error')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
       {/* Header */}
@@ -311,6 +336,20 @@ export function Loans() {
               ]}
             />
           </div>
+          <Button
+            variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf || loading || sortedLoans.length === 0}
+            className="shadow-sm justify-center cursor-pointer"
+            title="Download PDF statement of displayed loans"
+          >
+            {downloadingPdf ? (
+              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Printer className="w-4 h-4" />
+            )}
+            <span>Print / Download PDF</span>
+          </Button>
           <Button onClick={handleOpenAdd} className="shadow-sm justify-center">
             <Plus className="w-4 h-4" />
             <span>Add Loan</span>

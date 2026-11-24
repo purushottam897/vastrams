@@ -22,6 +22,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Skeleton, SkeletonTableRow } from '../components/ui/Skeleton'
 import { usePagination } from '../hooks/usePagination'
 import Pagination from '../components/ui/Pagination'
+import { useCompanyProfile } from '../context/ProfileContext'
+import { downloadFinancierRepaymentsPdf } from '../utils/financePdf'
 
 const fmt = (v) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(v)
 const initials = (name) => (name || '').split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase()
@@ -43,12 +45,14 @@ const getModeBadgeVariant = (mode) => {
 export function FinancierPayments() {
   const toast = useToast()
   const confirm = useConfirm()
+  const { companyProfile } = useCompanyProfile()
   const [paymentModes, setPaymentModes] = useState([])
 
   const [repayments, setRepayments] = useState([])
   const [financiers, setFinanciers] = useState([])
   const [loans, setLoans] = useState([])
   const [loading, setLoading] = useState(true)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [modeFilter, setModeFilter] = useState('ALL')
@@ -158,7 +162,11 @@ export function FinancierPayments() {
   useEffect(() => {
     const handleDataChanged = () => fetchRepaymentsData()
     window.addEventListener('api-data-changed', handleDataChanged)
-    return () => window.removeEventListener('api-data-changed', handleDataChanged)
+    window.addEventListener('vastrams:data-restored', handleDataChanged)
+    return () => {
+      window.removeEventListener('api-data-changed', handleDataChanged)
+      window.removeEventListener('vastrams:data-restored', handleDataChanged)
+    }
   }, [])
 
   const handleOpenAdd = () => {
@@ -367,6 +375,24 @@ export function FinancierPayments() {
     containerRef: tableContainerRef
   })
 
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloadingPdf(true)
+      await downloadFinancierRepaymentsPdf({
+        repayments: filtered,
+        companyProfile,
+        search,
+        modeFilter
+      })
+      toast('Financier repayments PDF downloaded successfully', 'success')
+    } catch (err) {
+      console.error('Failed to download PDF:', err)
+      toast('Failed to generate PDF. Please try again.', 'error')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
       {/* Header */}
@@ -375,10 +401,26 @@ export function FinancierPayments() {
         description="Track and record loan principal settlements and interest disbursements"
         breadcrumbs={[{ label: 'Financier Repayments' }]}
       >
-        <Button onClick={handleOpenAdd} className="shadow-sm">
-          <Plus className="w-4 h-4" />
-          <span>Record Repayment</span>
-        </Button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
+          <Button
+            variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf || loading || filtered.length === 0}
+            className="shadow-sm justify-center cursor-pointer"
+            title="Download PDF statement of displayed repayments"
+          >
+            {downloadingPdf ? (
+              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Printer className="w-4 h-4" />
+            )}
+            <span>Print / Download PDF</span>
+          </Button>
+          <Button onClick={handleOpenAdd} className="shadow-sm justify-center">
+            <Plus className="w-4 h-4" />
+            <span>Record Repayment</span>
+          </Button>
+        </div>
       </PageHeader>
 
       {/* Stats */}

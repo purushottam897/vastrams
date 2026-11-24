@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useReducer, useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Trash2, Edit2, Eye, X, Landmark, Percent, DollarSign } from 'lucide-react'
+import { Plus, Search, Trash2, Edit2, Eye, X, Landmark, Percent, DollarSign, Printer } from 'lucide-react'
 import DropdownSelect from '../components/ui/DropdownSelect'
 import { toTitleCase } from '../utils/text'
 import EmptyState from '../components/ui/EmptyState'
@@ -20,6 +20,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Skeleton, SkeletonTableRow } from '../components/ui/Skeleton'
 import { usePagination } from '../hooks/usePagination'
 import Pagination from '../components/ui/Pagination'
+import { useCompanyProfile } from '../context/ProfileContext'
+import { downloadFinanceSummaryPdf } from '../utils/financePdf'
 
 const fmt = (v) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(v)
 const initials = (name) => (name || '').split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase()
@@ -34,8 +36,10 @@ export function Financiers() {
   const toast = useToast()
   const confirm = useConfirm()
   const navigate = useNavigate()
+  const { companyProfile } = useCompanyProfile()
   const [financiers, setFinanciers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
@@ -114,7 +118,11 @@ export function Financiers() {
       fetchFinanciers()
     }
     window.addEventListener('api-data-changed', handleDataChanged)
-    return () => window.removeEventListener('api-data-changed', handleDataChanged)
+    window.addEventListener('vastrams:data-restored', handleDataChanged)
+    return () => {
+      window.removeEventListener('api-data-changed', handleDataChanged)
+      window.removeEventListener('vastrams:data-restored', handleDataChanged)
+    }
   }, [])
 
   const handleOpenAdd = () => {
@@ -224,6 +232,24 @@ export function Financiers() {
   const totalOutstanding = useMemo(() => financiers.reduce((s, f) => s + (f.outstanding || 0), 0), [financiers])
   const activeLoansTotal = useMemo(() => financiers.reduce((s, f) => s + (f.loansCount || 0), 0), [financiers])
 
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloadingPdf(true)
+      await downloadFinanceSummaryPdf({
+        financiers: filtered,
+        companyProfile,
+        search,
+        statusFilter
+      })
+      toast('Finance statement PDF downloaded successfully', 'success')
+    } catch (err) {
+      console.error('Failed to download PDF:', err)
+      toast('Failed to generate PDF. Please try again.', 'error')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
       {/* Header */}
@@ -232,10 +258,26 @@ export function Financiers() {
         description="Manage financiers, credit facilities, interest terms, and loan liabilities"
         breadcrumbs={[{ label: 'Finance' }]}
       >
-        <Button onClick={handleOpenAdd} className="shadow-sm">
-          <Plus className="w-4 h-4" />
-          <span>Add Finance</span>
-        </Button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
+          <Button
+            variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf || loading || filtered.length === 0}
+            className="shadow-sm justify-center cursor-pointer"
+            title="Download PDF statement of currently displayed finance records"
+          >
+            {downloadingPdf ? (
+              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Printer className="w-4 h-4" />
+            )}
+            <span>Print / Download PDF</span>
+          </Button>
+          <Button onClick={handleOpenAdd} className="shadow-sm justify-center">
+            <Plus className="w-4 h-4" />
+            <span>Add Finance</span>
+          </Button>
+        </div>
       </PageHeader>
 
       {/* Stats */}

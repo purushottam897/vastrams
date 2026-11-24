@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Edit2, Plus, ArrowLeft, Building2, X, Landmark, DollarSign, CheckCircle2, Clock } from 'lucide-react'
+import { Edit2, Plus, ArrowLeft, Building2, X, Landmark, DollarSign, CheckCircle2, Clock, Printer } from 'lucide-react'
 import { toInputDate, fromInputDate, getTodayFormatted } from '../utils/date'
 import DropdownSelect from '../components/ui/DropdownSelect'
 import CustomDatePicker from '../components/ui/CustomDatePicker'
@@ -14,6 +14,8 @@ import api from '../utils/api'
 import { useToast } from '../hooks/useToast'
 import Skeleton from '../components/ui/Skeleton'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useCompanyProfile } from '../context/ProfileContext'
+import { downloadFinancierProfilePdf } from '../utils/financePdf'
 
 const fmt = (v) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(v)
 
@@ -21,11 +23,13 @@ export function FinancierProfile() {
   const toast = useToast()
   const { id } = useParams()
   const navigate = useNavigate()
+  const { companyProfile } = useCompanyProfile()
   
   const [profile, setProfile] = useState(null)
   const [loans, setLoans] = useState([])
   const [paymentModes, setPaymentModes] = useState([])
   const [loading, setLoading] = useState(true)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [error, setError] = useState(null)
 
   // Modals state
@@ -271,6 +275,23 @@ export function FinancierProfile() {
     )
   }
 
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloadingPdf(true)
+      await downloadFinancierProfilePdf({
+        profile,
+        loans,
+        companyProfile
+      })
+      toast('Financier statement PDF downloaded successfully', 'success')
+    } catch (err) {
+      console.error('Failed to download PDF:', err)
+      toast('Failed to generate PDF. Please try again.', 'error')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
       {/* Header */}
@@ -283,6 +304,20 @@ export function FinancierProfile() {
         ]}
       >
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
+          <Button
+            variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf || loading}
+            className="justify-center cursor-pointer shadow-sm"
+            title="Download PDF statement for this financier"
+          >
+            {downloadingPdf ? (
+              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Printer className="w-4 h-4" />
+            )}
+            <span>Print / Download PDF</span>
+          </Button>
           <Button variant="outline" onClick={() => setShowEditModal(true)} className="justify-center">
             <Edit2 className="w-4 h-4" />
             <span>Edit Profile</span>
