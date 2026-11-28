@@ -48,12 +48,14 @@ export function RunningLedger() {
   const [vendors, setVendors] = useState([])
   const [financiers, setFinanciers] = useState([])
   const [partiesLoading, setPartiesLoading] = useState(true)
-  const [party, setParty] = useState('')
-  const [partyType, setPartyType] = useState('')
-  const [partyId, setPartyId] = useState('')
+  const initialParty = searchParams.get('party') || ''
+  const initialParts = initialParty.split('|')
+  const [party, setParty] = useState(initialParty)
+  const [partyType, setPartyType] = useState(initialParts.length === 3 ? initialParts[0] : '')
+  const [partyId, setPartyId] = useState(initialParts.length === 3 ? initialParts[1] : '')
   const [search, setSearch] = useState('')
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
+  const [fromDate, setFromDate] = useState(() => searchParams.get('from') || '')
+  const [toDate, setToDate] = useState(() => searchParams.get('to') || '')
   const [ledger, setLedger] = useState([])
   const [ledgerLoading, setLedgerLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -86,40 +88,52 @@ export function RunningLedger() {
       setPartyType(parts[0])
       setPartyId(parts[1])
     }
-    const newParams = new URLSearchParams(searchParams)
-    newParams.set('party', val)
-    setSearchParams(newParams)
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev)
+      newParams.set('party', val)
+      newParams.delete('page')
+      return newParams
+    })
   }
 
   const handleFromDateChange = (val) => {
     setFromDate(val)
-    const newParams = new URLSearchParams(searchParams)
-    if (val) {
-      newParams.set('from', val)
-    } else {
-      newParams.delete('from')
-    }
-    setSearchParams(newParams)
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev)
+      if (val) {
+        newParams.set('from', val)
+      } else {
+        newParams.delete('from')
+      }
+      newParams.delete('page')
+      return newParams
+    })
   }
 
   const handleToDateChange = (val) => {
     setToDate(val)
-    const newParams = new URLSearchParams(searchParams)
-    if (val) {
-      newParams.set('to', val)
-    } else {
-      newParams.delete('to')
-    }
-    setSearchParams(newParams)
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev)
+      if (val) {
+        newParams.set('to', val)
+      } else {
+        newParams.delete('to')
+      }
+      newParams.delete('page')
+      return newParams
+    })
   }
 
   const handleClearDates = () => {
     setFromDate('')
     setToDate('')
-    const newParams = new URLSearchParams(searchParams)
-    newParams.delete('from')
-    newParams.delete('to')
-    setSearchParams(newParams)
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev)
+      newParams.delete('from')
+      newParams.delete('to')
+      newParams.delete('page')
+      return newParams
+    })
   }
 
   useEffect(() => {

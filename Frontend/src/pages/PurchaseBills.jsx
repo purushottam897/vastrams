@@ -406,14 +406,13 @@ export function PurchaseBills() {
                   <th className="px-6 py-3.5">Bill Date</th>
                   <th className="px-6 py-3.5">Due Date</th>
                   <th className="px-6 py-3.5 text-right">Amount</th>
-                  <th className="px-6 py-3.5 text-right">Outstanding</th>
-                  <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5 text-center">Status</th>
                   <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                 {Array.from({ length: 5 }).map((_, idx) => (
-                  <SkeletonTableRow key={idx} cols={9} widths={["w-20", "w-36", "w-20", "w-24", "w-24", "w-20", "w-20", "w-16", "w-20"]} />
+                  <SkeletonTableRow key={idx} cols={8} widths={["w-20", "w-36", "w-20", "w-24", "w-24", "w-20", "w-16", "w-20"]} />
                 ))}
               </tbody>
             </table>
@@ -460,20 +459,18 @@ export function PurchaseBills() {
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs py-2 px-3 rounded-lg bg-slate-50/80 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
+                  <div className="grid grid-cols-3 gap-2 text-xs py-2 px-3 rounded-lg bg-slate-50/80 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
                     <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Total Amount</span>
-                      <span className="font-bold text-sm text-slate-900 dark:text-slate-100 tabular-nums block">₹{fmt(b.amount)}</span>
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Billed</span>
+                      <span className="font-medium text-slate-700 dark:text-slate-300 block">{b.date}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Due Date</span>
+                      <span className="font-medium text-slate-700 dark:text-slate-300 block">{b.dueDate}</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Outstanding</span>
-                      <span className={`font-bold text-sm tabular-nums ${b.outstanding > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500'}`}>
-                        ₹{fmt(b.outstanding)}
-                      </span>
-                    </div>
-                    <div className="col-span-2 pt-1 border-t border-slate-200/40 dark:border-slate-700/40 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Billed: <span className="font-medium text-slate-700 dark:text-slate-300">{b.date}</span></span>
-                      <span>Due: <span className="font-medium text-slate-700 dark:text-slate-300">{b.dueDate}</span></span>
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">Total Amount</span>
+                      <span className="font-bold text-sm text-slate-900 dark:text-slate-100 tabular-nums block">₹{fmt(b.amount)}</span>
                     </div>
                   </div>
 
@@ -529,8 +526,7 @@ export function PurchaseBills() {
                     <th className="px-6 py-3.5">Bill Date</th>
                     <th className="px-6 py-3.5">Due Date</th>
                     <th className="px-6 py-3.5 text-right">Amount</th>
-                    <th className="px-6 py-3.5 text-right">Outstanding</th>
-                    <th className="px-6 py-3.5">Status</th>
+                    <th className="px-6 py-3.5 text-center">Status</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -560,10 +556,7 @@ export function PurchaseBills() {
                       <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-slate-100 tabular-nums whitespace-nowrap">
                         ₹{fmt(b.amount)}
                       </td>
-                      <td className={`px-6 py-4 text-right font-bold tabular-nums whitespace-nowrap ${b.outstanding > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                        ₹{fmt(b.outstanding)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4 text-center whitespace-nowrap">
                         <Badge variant={getStatusBadgeVariant(b.status)} dot>
                           {toTitleCase(b.status)}
                         </Badge>

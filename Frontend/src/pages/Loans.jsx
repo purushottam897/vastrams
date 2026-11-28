@@ -294,6 +294,7 @@ export function Loans() {
     items: sortedLoans,
     moduleKey: 'loans',
     initialPageSize: 20,
+    filterDependencies: [sortBy],
     containerRef: cardContainerRef
   })
 

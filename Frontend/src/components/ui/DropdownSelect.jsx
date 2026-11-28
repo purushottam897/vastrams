@@ -38,12 +38,14 @@ export function DropdownSelect({
         const rect = containerRef.current.getBoundingClientRect()
         const spaceBelow = window.innerHeight - rect.bottom
         const spaceAbove = rect.top
-        const shouldOpenUp = dropUp || (spaceBelow < 200 && spaceAbove > spaceBelow)
+        const shouldOpenUp = dropUp ? (spaceAbove >= 160 || spaceAbove > spaceBelow) : (spaceBelow < 200 && spaceAbove > spaceBelow)
+        const minMenuWidth = Math.max(rect.width, 110)
+        const clampedLeft = Math.max(8, Math.min(rect.left, window.innerWidth - minMenuWidth - 8))
 
         setCoords({
           top: rect.bottom,
           bottomTop: rect.top,
-          left: rect.left,
+          left: clampedLeft,
           width: rect.width,
           shouldOpenUp
         })

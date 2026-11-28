@@ -17,6 +17,8 @@ import Skeleton from '../components/ui/Skeleton'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCompanyProfile } from '../context/ProfileContext'
 import { downloadFinancierProfilePdf } from '../utils/financePdf'
+import { usePagination } from '../hooks/usePagination'
+import Pagination from '../components/ui/Pagination'
 
 const fmt = (v) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(v)
 
@@ -259,6 +261,16 @@ export function FinancierProfile() {
     }
   }
 
+  const tableContainerRef = React.useRef(null)
+
+  const pagination = usePagination({
+    items: loans,
+    moduleKey: 'financier_profile_loans',
+    initialPageSize: 20,
+    filterDependencies: [id],
+    containerRef: tableContainerRef
+  })
+
   if (error) {
     return (
       <div className="p-6">
@@ -436,7 +448,7 @@ export function FinancierProfile() {
             <>
               {/* Mobile Cards View (< md) */}
               <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-700/50">
-                {loans.map((l, i) => (
+                {pagination.paginatedItems.map((l, i) => (
                   <div key={l.id || i} className="p-4 space-y-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
@@ -480,7 +492,7 @@ export function FinancierProfile() {
               </div>
 
               {/* Desktop Table (>= md) */}
-              <div className="hidden md:block overflow-x-auto">
+              <div ref={tableContainerRef} className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50/90 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-700 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     <tr>
@@ -494,7 +506,7 @@ export function FinancierProfile() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                    {loans.map((l, i) => (
+                    {pagination.paginatedItems.map((l, i) => (
                       <tr key={l.id || i} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors h-16">
                         <td className="px-6 py-4 font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">{l.noteNo}</td>
                         <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">{l.date}</td>
@@ -523,6 +535,7 @@ export function FinancierProfile() {
                   </tbody>
                 </table>
               </div>
+              <Pagination {...pagination} isLoading={loading} />
             </>
           )}
         </CardContent>
